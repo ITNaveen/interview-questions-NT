@@ -4,6 +4,14 @@
 
 ### 1. What is the difference between Terraform state locking and state versioning?
 
+Why Only DynamoDB for Terraform State Locking?
+
+3️⃣ Fully Managed & Highly Available – No need to manage servers, patch software, or handle failover—DynamoDB is AWS-managed and replicated across AZs.
+
+4️⃣ Automatic Lock Expiry (TTL Feature) – Prevents stale locks if a Terraform process crashes because it has TTL, unlike RDS or file-based locks that require manual cleanup.
+
+5️⃣ Cost-Effective & IAM-Based Security – Cheaper than RDS, scales automatically, and uses IAM policies for fine-grained access control, making it more secure and efficient
+
 **Answer:**
 State locking prevents concurrent operations that might corrupt the state file. When a Terraform operation begins that could write to the state, it locks the state file to prevent other processes from acquiring the lock and potentially corrupting the state.
 
@@ -26,34 +34,36 @@ In this example, the DynamoDB table provides locking functionality, while S3 ver
 ### 2. How does Terraform handle dependencies between resources, and what happens if you remove a dependency?
 
 **Answer:**
-Terraform builds a dependency graph to determine the order of resource creation, modification, and deletion. Dependencies can be:
+Terraform automatically creates a dependency graph of all resources in your configuration. This helps determine:
+✔ Order of resource creation (which resources must be created first).
+✔ Parallelization (which resources can be created at the same time).
+✔ Order of resource destruction (which dependencies must be deleted first).
 
 1. **Implicit** - When one resource references attributes of another using interpolation.
+resource "aws_vpc" "my_vpc" {
+  cidr_block = "10.0.0.0/16"
+}
+
+resource "aws_subnet" "my_subnet" {
+  vpc_id = aws_vpc.my_vpc.id  # 🔥 Implicit dependency
+  cidr_block = "10.0.1.0/24"
+}
+
 2. **Explicit** - When using the `depends_on` argument.
-
-When a dependency is removed:
-- If resources still reference the removed dependency, Terraform will produce an error.
-- If no more references exist, Terraform will destroy the resource during the next apply unless it's protected with `prevent_destroy = true`.
-
-**Example:**
-```hcl
-# Explicit dependency
-resource "aws_instance" "app" {
-  ami           = "ami-0c55b159cbfafe1f0"
+resource "aws_instance" "my_vm" {
+  ami           = "ami-12345678"
   instance_type = "t2.micro"
-  depends_on    = [aws_route_table_association.public]
+  depends_on    = [aws_security_group.my_sg]  # 🔥 Explicit dependency
 }
 
-# Implicit dependency
-resource "aws_eip" "ip" {
-  instance = aws_instance.app.id
+resource "aws_security_group" "my_sg" {
+  name = "my-security-group"
 }
-```
 
 ### 3. Explain the concept of idempotence in Terraform and why it's important.
 
 **Answer:**
-Idempotence means that applying the same configuration multiple times will result in the same end state, regardless of the starting state. This is crucial for infrastructure as code because:
+Terraform compares the current infrastructure state (terraform.tfstate) with the desired configuration (.tf files) and only applies changes if necessary.
 
 1. It allows for safe, repeatable deployments
 2. It enables drift detection and remediation
@@ -85,28 +95,35 @@ The difference is important from a safety perspective:
 **Answer:**
 Terraform offers several methods to handle sensitive data:
 
-1. **Terraform Variables with the sensitive flag**:
-   ```hcl
-   variable "database_password" {
-     type      = string
-     sensitive = true
-   }
-   ```
+variable "db_password" {
+  description = "Database password"
+  type        = string
+  sensitive   = true  # 🔥 Prevents exposure in logs
+}
 
-2. **Environment Variables**:
-   ```
-   TF_VAR_database_password="secret123"
-   ```
+resource "aws_db_instance" "my_db" {
+  engine         = "mysql"
+  instance_class = "db.t2.micro"
+  password       = var.db_password  # Terraform will not show this in CLI output
+}
 
-3. **External Secret Management**:
-   - AWS Secrets Manager integration
-   - HashiCorp Vault integration
-   - Azure Key Vault integration
+AWS Secrets Manager integration --
+- save the password - 
+  aws secretsmanager create-secret --name "my-db-password" --secret-string "SuperSecret123!"
 
-4. **Encrypted State Files**:
-   - Using backend encryption (e.g., S3 with SSE)
-   - Using remote backends with encryption in transit (HTTPS)
+- retreive - 
+  data "aws_secretsmanager_secret" "db_secret" {    ///This finds the secret based on the name "my-db-password".
+  name = "my-db-password" 
+  sensitive = true    ////Prevents Terraform from displaying it
+  }
+  ✔ This only finds metadata about the secret (e.g., ID, ARN).
+  ✔ It does NOT return the actual secret value!
 
+  data "aws_secretsmanager_secret_version" "db_secret_version" {  
+  secret_id = data.aws_secretsmanager_secret.db_secret.id
+  }
+  use that - data.aws_secretsmanager_secret_version.db_secret_version.secret_string
+   
 **Best Practices:**
 - Never commit secrets to version control
 - Leverage centralized secret management
@@ -357,143 +374,197 @@ module "vpc" {
 ### 13. How would you deal with a module that needs to be different between environments, beyond simple variable changes?
 
 **Answer:**
-There are several strategies to handle significant environment differences:
+I would use Terragrunt and modules to handle environment-specific differences. Instead of just using variables, I would create separate module configurations for each environment. With Terragrunt, I can dynamically load different modules or configurations based on the environment. This avoids code duplication while keeping infrastructure consistent.
 
-1. **Conditional Resource Creation**:
-   ```hcl
-   resource "aws_backup_vault" "example" {
-     count = var.environment == "prod" ? 1 : 0
-     name  = "backup-vault"
-   }
-   ```
+terragrunt-infra/
+│── modules/                    # Reusable Terraform modules
+│   ├── vpc/                    # VPC module
+│   │   ├── main.tf
+│   │   ├── variables.tf
+│   │   ├── outputs.tf
+│   ├── ec2/                    # EC2 module
+│   │   ├── main.tf
+│   │   ├── variables.tf
+│   │   ├── outputs.tf
+│
+│── terragrunt/                 # Terragrunt configurations
+│   ├── test/                   # Test environment
+│   │   ├── terragrunt.hcl
+│   ├── stage/                  # Stage environment
+│   │   ├── terragrunt.hcl
+│   ├── prod/                   # Prod environment
+│   │   ├── terragrunt.hcl
+│
+│── terragrunt.hcl              # Global config for all environments
 
-2. **Provider Configurations by Environment**:
-   ```hcl
-   provider "aws" {
-     region = var.region
-     alias  = "primary"
-   }
-
-   provider "aws" {
-     region = var.environment == "prod" ? "us-west-2" : "us-east-1"
-     alias  = "secondary"
-   }
-   ```
-
-3. **Module Composition** - Create different parent modules for different environments:
-   ```hcl
-   # For production
-   module "database_prod" {
-     source = "./modules/database-ha"
-     # High-availability parameters
-   }
-
-   # For non-production
-   module "database_dev" {
-     source = "./modules/database-simple"
-     # Simplified parameters
-   }
-   ```
-
-4. **Feature Toggles with Locals**:
-   ```hcl
-   locals {
-     enable_disaster_recovery = var.environment == "prod" ? true : false
-     backup_retention         = var.environment == "prod" ? 30 : 7
-     multi_az                 = var.environment == "prod" ? true : false
-   }
-   ```
-
-5. **Terragrunt** for DRY configurations across environments
-
-### 14. What is the difference between using a module from the Terraform Registry and a local module?
-
-**Answer:**
-**Registry Modules:**
-```hcl
-module "vpc" {
-  source  = "terraform-aws-modules/vpc/aws"
-  version = "3.14.0"
-  
-  # module inputs
+# root terragrunt.hcl -     //thats how i can call modules in terragrant 
+  terraform {
+  source = "${get_repo_root()}/modules//"
 }
-```
 
-**Local Modules:**
-```hcl
-module "vpc" {
-  source = "../modules/vpc"
-  
-  # module inputs
+remote_state {
+  backend = "s3"
+  config = {
+    bucket         = "my-terraform-state"
+    key            = "${path_relative_to_include()}/terraform.tfstate"
+    region         = "us-east-1"
+    dynamodb_table = "terraform-lock"
+  }
 }
-```
 
-**Key Differences:**
+2️⃣ terragrunt/test/terragrunt.hcl (Test Environment)
+include {
+  path = find_in_parent_folders()
+}
 
-1. **Source Path**:
-   - Registry: `[namespace]/[name]/[provider]`
-   - Local: File path (relative or absolute)
+terraform {
+  source = "../../modules/"
+}
 
-2. **Versioning**:
-   - Registry: Explicit versioning via the `version` attribute
-   - Local: Often managed via Git (commits/branches/tags)
+inputs = {
+  vpc_cidr_block = "10.0.1.0/24"
+  instance_type  = "t2.micro"
+}
 
-3. **Discoverability & Documentation**:
-   - Registry: Searchable with standardized docs
-   - Local: Documentation based on your own standards
+3️⃣ terragrunt/stage/terragrunt.hcl (Stage Environment)
+include {
+  path = find_in_parent_folders()
+}
 
-4. **Maintenance Responsibility**:
-   - Registry: Maintained by module author (may be HashiCorp or community)
-   - Local: Maintained by your team
+terraform {
+  source = "../../modules/"
+}
 
-5. **Trust & Security**:
-   - Registry: Must evaluate third-party code
-   - Local: Code controlled by your organization
+inputs = {
+  vpc_cidr_block = "10.0.2.0/24"
+  instance_type  = "t3.medium"
+}
 
-**When to use each:**
-- Registry: For standard patterns with well-maintained modules
-- Local: For organization-specific patterns or when you need full control
+4️⃣ terragrunt/prod/terragrunt.hcl (Prod Environment)
+include {
+  path = find_in_parent_folders()
+}
+
+terraform {
+  source = "../../modules/"
+}
+
+inputs = {
+  vpc_cidr_block = "10.0.0.0/16"
+  instance_type  = "t3.large"
+}
+
+5️⃣ modules/vpc/main.tf (Reusable VPC Module)
+resource "aws_vpc" "main" {
+  cidr_block = var.vpc_cidr_block
+  tags = {
+    Name = "VPC-${terraform.workspace}"
+  }
+}
+✅ modules/vpc/outputs.tf
+variable "vpc_cidr_block" {
+  description = "CIDR block for the VPC"
+  type        = string
+}
+output "vpc_id" {
+  value = aws_vpc.main.id
+}
+✅ modules/vpc/variables.tf
+variable "vpc_cidr_block" {
+  description = "CIDR block for the VPC"
+  type        = string
+}
+
+🚀 Deploying Each Environment
+Run these commands inside each environment:
+cd terragrunt/test
+terragrunt apply --auto-approve
+
+cd ../stage
+terragrunt apply --auto-approve
+
+cd ../prod
+terragrunt apply --auto-approve
+
+📌 Why Is This Setup Good?
+✅ No duplicate Terraform code (everything is modular).
+✅ Different environments, different configurations (VPC & EC2 settings).
+✅ State files are isolated (each env has its own S3 state file).
+✅ Easy deployment with terragrunt apply.
+
+🚀 Now your infrastructure is clean, scalable, and easy to manage! 🎉
 
 ### 15. How do you handle versioning of your Terraform modules?
 
 **Answer:**
 Module versioning is crucial for stability and controlled upgrades. Here's a comprehensive approach:
 
-1. **Use Semantic Versioning (SemVer)**:
-   - MAJOR: Breaking changes
-   - MINOR: New features, backward compatible
-   - PATCH: Bug fixes, backward compatible
+🌟 Scenario - You have:
+Module Repo (terraform-modules.git) → Contains your EC2 module.
+Project Repo → Uses the module to create an EC2 instance.
 
-2. **Git Tags for Version Control**:
-   ```bash
-   git tag -a v1.2.3 -m "Release version 1.2.3"
-   git push origin v1.2.3
-   ```
+Now, you want to:
+Version your module correctly using Git.
+Check version history and see what changed.
+Use a specific version in your Terraform project.
 
-3. **Version Constraints in Consumer Code**:
-   ```hcl
-   module "vpc" {
-     source  = "terraform-aws-modules/vpc/aws"
-     version = "~> 3.14.0"  # Allows 3.14.x but not 3.15.0+
-   }
-   ```
+1️⃣ Versioning Your Module
+Step 1: Tagging the First Version (v1.0.0)
+You finished your first working version of the EC2 module, so you tag it:
+cd /path/to/terraform-modules
+git tag v1.0.0
+git push origin v1.0.0  # Push the tag to GitHub
 
-4. **Version Reference Types**:
-   - Exact: `version = "3.14.0"`
-   - Pessimistic: `version = "~> 3.14.0"` (3.14.x only)
-   - Optimistic: `version = ">= 3.14.0"` (3.14.0 or greater)
+✅ Now, v1.0.0 is saved in GitHub as a versioned release.
+Step 2: Making Changes (Adding SSH Key)
+Now, you add SSH key support to the module.
+Before pushing the changes, you create a new tag:
+git tag v1.0.1
+git push origin v1.0.1  # Push the new tag to GitHub
 
-5. **Document Breaking Changes**:
-   - Keep a CHANGELOG.md file
-   - Clearly document upgrade paths
+✅ Now, you have two versions (v1.0.0 and v1.0.1) available in GitHub.
+2️⃣ Listing Versions & Checking Changes
+Step 3: List All Versions
+To see all tagged versions:
+git tag   //Lists all tags that exist locally.   ///If you tagged a version but haven't pushed it yet, it will only appear here.
+This will show:
+v1.0.0
+v1.0.1
 
-6. **Testing Across Versions**:
-   - Ensure backward compatibility
-   - Test all supported Terraform versions
+If you want to see tags in GitHub, run:
+git ls-remote --tags origin  ///Shows all tags that exist in the remote repo.  ///If a tag appears locally but not in this list, you likely forgot to push it.
 
-7. **Private Module Registry** (for enterprises):
-   - Consider Terraform Cloud or Enterprise
-   - Or use Azure DevOps Artifacts, GitLab, etc.
+Step 4: Check What Changed in Each Version
+To see what changed between v1.0.0 and v1.0.1:
+git diff v1.0.0 v1.0.1
+It will show something like:
++ variable "ssh_key" {
++   type = string
++ }
+✅ This tells you that v1.0.1 introduced the SSH key feature.
+
+If you just want to see commit messages per version, run:
+git log v1.0.0..v1.0.1 --oneline
+This shows all commits between v1.0.0 and v1.0.1.
+
+3️⃣ Using a Specific Module Version in Terraform
+Now, in your Terraform project repo, you can use a specific module version.
+Use the first version (v1.0.0):
+module "ec2" {
+  source = "git::https://github.com/my-org/terraform-modules.git//ec2?ref=v1.0.0"
+}
+
+Switch to the new version (v1.0.1):
+
+module "ec2" {
+  source = "git::https://github.com/my-org/terraform-modules.git//ec2?ref=v1.0.1"
+}
+
+Update Terraform to fetch the new module version:
+terraform get -update
+terraform init -upgrade
+
+✅ Now, your Terraform project is using v1.0.1, which includes SSH key support.
 
 ## Advanced Configuration Techniques
 
@@ -514,6 +585,13 @@ resource "aws_instance" "server" {
   }
 }
 ```
+✅ Good for:
+✔ Same instance type, AMI, and configuration.
+✔ Simple, predictable structure.
+✔ Order matters (like server-0, server-1, server-2).
+
+❌ Problem with Deletion:
+If you remove server-0 by reducing count = 2, Terraform will recreate server-1 as server-0 and server-2 as server-1.
 
 **For_each with a map**:
 ```hcl
@@ -531,19 +609,32 @@ resource "aws_instance" "server" {
   }
 }
 ```
+✅ Good for:
+✔ Unique instance types (or other attributes).
+✔ Resources won’t be recreated if one is removed.
+✔ Useful for maps or sets of dynamic values.
 
-**For_each with a set**:
-```hcl
+✅ How Deletion Works (for_each)
+
+If you remove "web" from the map, only server-web is deleted.
+"server-api" and "server-db" remain untouched.
+❌ Why Not Use for_each All the Time?
+
+More complex than count – requires a map/set instead of just a number.
+Extra management overhead – better for unique configurations, not simple duplication.
+Terraform doesn’t support for_each on lists, so you need to convert lists to sets/maps (toset() or {}), adding complexity.
+
+📌 Example: Using for_each with toset
 resource "aws_instance" "server" {
-  for_each      = toset(["web", "api", "db"])
-  ami           = "ami-0c55b159cbfafe1f0"
+  for_each = toset(["app1", "app2", "app3"])  # Convert list to a set
+  ami      = "ami-0c55b159cbfafe1f0"
   instance_type = "t2.micro"
-  
+
   tags = {
-    Name = "server-${each.key}"
+    Name = "server-${each.key}"  # Creates "server-app1", "server-app2", "server-app3"
   }
 }
-```
+
 
 **When to use Count**:
 - When instances are identical except for a simple incrementing number
@@ -559,235 +650,235 @@ resource "aws_instance" "server" {
 **Key advantage of for_each:** When you remove an item from the middle of a count list, all higher-indexed resources are recreated. With for_each, only the removed item is affected.
 
 ### 17. What are Terraform's meta-arguments and how would you use them?
+Meta-arguments in Terraform don’t define resources but instead change their behavior—like how many to create, conditions for creation, or dependencies.
 
-**Answer:**
-Meta-arguments are special arguments that affect the behavior of resources and modules rather than configuring the resource itself. The primary meta-arguments include:
+Terraform Meta-Arguments Guide
 
-1. **`count`**: Creates multiple instances based on a number.
-   ```hcl
-   resource "aws_instance" "server" {
-     count = 3
-     ami   = "ami-0c55b159cbfafe1f0"
-   }
-   ```
+1️⃣ count: Create Multiple Identical Instances
+Creates a specified number of identical resources.✅ Best for: When you need identical resources but with a unique index.
+resource "aws_instance" "server" {
+  count         = 3  # Creates 3 instances
+  ami           = "ami-0c55b159cbfafe1f0"
+  instance_type = "t2.micro"
 
-2. **`for_each`**: Creates multiple instances based on a map or set.
-   ```hcl
-   resource "aws_route53_record" "www" {
-     for_each = {
-       us-east-1 = "10.0.1.0"
-       us-west-2 = "10.0.2.0"
-     }
-     zone_id = aws_route53_zone.primary.zone_id
-     name    = "www.example.com"
-     type    = "A"
-     ttl     = 300
-     records = [each.value]
-   }
-   ```
+  tags = {
+    Name = "server-${count.index}"  # "server-0", "server-1", "server-2"
+  }
+}
+📌 Issue with Deletion: If you remove count = 2, Terraform may recreate instances with shifted indexes.
 
-3. **`depends_on`**: Creates explicit dependencies.
-   ```hcl
-   resource "aws_instance" "example" {
-     ami           = "ami-0c55b159cbfafe1f0"
-     instance_type = "t2.micro"
-     depends_on    = [aws_s3_bucket.example]
-   }
-   ```
+2️⃣ for_each: Create Multiple Unique Resources
+Creates multiple resources dynamically using a map or set.✅ Best for: When each resource has unique attributes.
+🟢 Using a Map (Key-Value Pairs)
+resource "aws_route53_record" "www" {
+  for_each = {
+    us-east-1 = "10.0.1.0"
+    us-west-2 = "10.0.2.0"
+  }
+  zone_id = aws_route53_zone.primary.zone_id
+  name    = "www.example.com"
+  type    = "A"
+  ttl     = 300
+  records = [each.value]
+}
+✅ Creates:
+www-us-east-1 → IP 10.0.1.0
+www-us-west-2 → IP 10.0.2.0
 
-4. **`lifecycle`**: Customizes lifecycle behavior.
-   ```hcl
-   resource "aws_instance" "example" {
-     ami           = "ami-0c55b159cbfafe1f0"
-     instance_type = "t2.micro"
-     
-     lifecycle {
-       create_before_destroy = true
-       prevent_destroy       = true
-       ignore_changes        = [tags]
-     }
-   }
-   ```
+🟢 Using a Set (List of Unique Names)
+resource "aws_instance" "server" {
+  for_each = toset(["app1", "app2", "app3"])  # Converts list to a set
+  ami      = "ami-0c55b159cbfafe1f0"
+  instance_type = "t2.micro"
 
-5. **`provider`**: Specifies which provider configuration to use.
-   ```hcl
-   resource "aws_instance" "example" {
-     provider      = aws.west
-     ami           = "ami-0c55b159cbfafe1f0"
-     instance_type = "t2.micro"
-   }
-   ```
+  tags = {
+    Name = "server-${each.key}"  # "server-app1", "server-app2", "server-app3"
+  }
+}
+📌 Advantage: If you remove "app1", only that instance is deleted, without affecting others.
 
-6. **`provisioner`**: Runs actions after resource creation.
-   ```hcl
-   resource "aws_instance" "example" {
-     ami           = "ami-0c55b159cbfafe1f0"
-     instance_type = "t2.micro"
-     
-     provisioner "local-exec" {
-       command = "echo ${self.private_ip} > ip_address.txt"
-     }
-   }
-   ```
+3️⃣ depends_on: Define Dependencies
+Ensures a resource is created only after another resource exists.✅ Best for: When Terraform doesn’t detect dependencies automatically.
+resource "aws_s3_bucket" "example" {
+  bucket = "my-unique-bucket-name"
+}
+resource "aws_instance" "example" {
+  ami           = "ami-0c55b159cbfafe1f0"
+  instance_type = "t2.micro"
+  depends_on    = [aws_s3_bucket.example]  # Ensures S3 bucket is created first
+}
+📌 Without depends_on, Terraform might try to create the EC2 before the S3 bucket exists.
+
+4️⃣ lifecycle: Manage Resource Behavior
+Controls how Terraform creates, updates, and destroys resources.✅ Best for: Preventing unwanted changes, ensuring smooth updates.
+resource "aws_instance" "example" {
+  ami           = "ami-0c55b159cbfafe1f0"
+  instance_type = "t2.micro"
+  
+  lifecycle {
+    create_before_destroy = true  # Avoids downtime by creating a new instance first
+    prevent_destroy       = true  # Prevents accidental deletion
+    ignore_changes        = [tags]  # Ignore tag changes (e.g., manually updated tags)
+  }
+}
+📌 Behavior:
+If Terraform tries to delete this instance, it fails due to prevent_destroy.
+Tag changes won’t trigger updates.
+
+5️⃣ provider: Use a Specific Provider Configuration
+Overrides the default provider for a specific resource.✅ Best for: Multi-region or multi-cloud deployments.
+provider "aws" {
+  alias  = "west"
+  region = "us-west-2"
+}
+resource "aws_instance" "example" {
+  provider      = aws.west  # Use the "west" provider instead of default
+  ami           = "ami-0c55b159cbfafe1f0"
+  instance_type = "t2.micro"
+}
+📌 Behavior:
+This instance only runs in us-west-2, even if the default provider is us-east-1.
 
 ### 18. Explain how the `terraform_remote_state` data source works and when it should be used.
-
 **Answer:**
 The `terraform_remote_state` data source retrieves the state from another Terraform configuration, allowing you to use outputs from one Terraform project as inputs to another.
 
-**Example:**
-```hcl
-# In your networking project
+Example Scenario
+Networking Team creates VPC, Subnets, Security Groups, and stores Terraform state remotely (e.g., in an S3 bucket or Terraform Cloud).
+App Team needs the App Subnet ID to deploy EC2 instances but shouldn’t manage the networking itself.
+Solution: The Networking Team outputs the app_subnet_id, and the App Team fetches it using terraform_remote_state.
+
+Networking Team - Creating VPC with Two Subnets
+terraform {
+  backend "s3" {  
+    bucket = "my-terraform-state"
+    key    = "networking/terraform.tfstate"  
+    region = "us-east-1"
+  }
+}
+resource "aws_vpc" "main" {
+  cidr_block = "10.0.0.0/16"
+}
+resource "aws_subnet" "app_subnet" {
+  vpc_id     = aws_vpc.main.id
+  cidr_block = "10.0.1.0/24"
+}
+resource "aws_subnet" "db_subnet" {
+  vpc_id     = aws_vpc.main.id
+  cidr_block = "10.0.2.0/24"
+}
+
+# Outputs for other teams
 output "vpc_id" {
   value = aws_vpc.main.id
 }
 
-# In your application project
-data "terraform_remote_state" "network" {
+output "app_subnet_id" {
+  value = aws_subnet.app_subnet.id
+}
+
+output "db_subnet_id" {
+  value = aws_subnet.db_subnet.id
+}
+📌 Networking state is stored in: s3://my-terraform-state/networking/terraform.tfstate
+
+- App Team - Fetching the App Subnet Using terraform_remote_state
+data "terraform_remote_state" "networking" {
   backend = "s3"
   config = {
-    bucket = "terraform-state"
-    key    = "network/terraform.tfstate"
+    bucket = "my-terraform-state"
+    key    = "networking/terraform.tfstate"
     region = "us-east-1"
   }
 }
-
 resource "aws_instance" "app" {
-  subnet_id = data.terraform_remote_state.network.outputs.subnet_ids[0]
-}
-```
+  ami           = "ami-0c55b159cbfafe1f0"
+  instance_type = "t2.micro"
+  subnet_id     = data.terraform_remote_state.networking.outputs.app_subnet_id  # Fetching App Subnet
 
+  tags = {
+    Name = "App-Instance"
+  }
+}
+📌 The App Team now dynamically fetches the app_subnet_id without needing to modify networking infrastructure.
 **When to use:**
 1. To share information between separate Terraform configurations
 2. To maintain separation of concerns (e.g., networking vs. applications)
 3. When different teams are responsible for different parts of infrastructure
 4. When you need to break a large configuration into smaller, more manageable pieces
 
-**Best practices:**
-1. Only expose necessary outputs (treat it like an API)
-2. Document outputs and their structures
-3. Version outputs carefully to avoid breaking changes
-4. Consider alternatives like Terraform modules for tightly coupled resources
-
-**Limitations:**
-1. Creates coupling between separate configurations
-2. Can lead to a "wait and apply" workflow
-3. Might need to manage access to multiple state files
-4. Only provides read access to outputs, not to resource attributes
-
-### 19. How would you implement custom validation for Terraform variables?
-
-**Answer:**
-Custom validation for variables was introduced in Terraform 0.13 and provides a way to ensure inputs meet specific requirements before execution.
-
-**Basic Syntax:**
-```hcl
-variable "instance_type" {
-  type        = string
-  description = "EC2 instance type"
-  
-  validation {
-    condition     = contains(["t2.micro", "t2.small", "t2.medium"], var.instance_type)
-    error_message = "Instance type must be t2.micro, t2.small, or t2.medium."
-  }
-}
-```
-
-**Complex Validation Examples:**
-
-1. **Regex Pattern Matching:**
-```hcl
-variable "environment" {
-  type        = string
-  description = "Deployment environment"
-  
-  validation {
-    condition     = can(regex("^(dev|staging|prod)$", var.environment))
-    error_message = "Environment must be 'dev', 'staging', or 'prod'."
-  }
-}
-```
-
-2. **Number Range Validation:**
-```hcl
-variable "port_number" {
-  type        = number
-  description = "Application port number"
-  
-  validation {
-    condition     = var.port_number > 0 && var.port_number < 65536
-    error_message = "Port number must be between 1 and 65535."
-  }
-}
-```
-
-3. **CIDR Range Validation:**
-```hcl
-variable "vpc_cidr" {
-  type        = string
-  description = "VPC CIDR block"
-  
-  validation {
-    condition     = can(cidrnetmask(var.vpc_cidr))
-    error_message = "VPC CIDR must be a valid CIDR block."
-  }
-  
-  validation {
-    condition     = can(regex("^10\\.", var.vpc_cidr))
-    error_message = "VPC CIDR must be in the 10.x.x.x range."
-  }
-}
-```
-
-4. **List Length Validation:**
-```hcl
-variable "availability_zones" {
-  type        = list(string)
-  description = "List of AZs to deploy into"
-  
-  validation {
-    condition     = length(var.availability_zones) >= 2
-    error_message = "At least 2 availability zones must be specified."
-  }
-}
-```
-
 ### 20. Describe the purpose of `terraform.tfvars`, `terraform.tfvars.json`, and `*.auto.tfvars` files.
-
 **Answer:**
 These files provide values for your defined variables in a Terraform configuration:
 
-**terraform.tfvars:**
-A file containing variable values in HCL format, automatically loaded by Terraform.
+Scenario - We want to deploy an EC2 instance in a VPC with a dynamic subnet and instance type, where the configuration differs for prod and test environments.
 
-```hcl
-# terraform.tfvars
-region      = "us-west-2"
-instance_type = "t2.micro"
-vpc_cidr    = "10.0.0.0/16"
-environment = "dev"
-```
-
-**terraform.tfvars.json:**
-A JSON alternative to terraform.tfvars, also automatically loaded.
-
-```json
-{
-  "region": "us-west-2",
-  "instance_type": "t2.micro",
-  "vpc_cidr": "10.0.0.0/16",
-  "environment": "dev"
+- main.tf (Defines EC2 Instance, VPC, and Subnet)
+provider "aws" {
+  region = "us-east-1"
 }
-```
+resource "aws_instance" "app" {
+  ami           = "ami-0c55b159cbfafe1f0"
+  instance_type = var.instance_type
+  subnet_id     = var.subnet_id
 
-**\*.auto.tfvars / \*.auto.tfvars.json:**
-Any file with `.auto.tfvars` or `.auto.tfvars.json` extension is automatically loaded.
+  tags = {
+    Name = "${var.environment}-app"
+  }
+}
 
-```hcl
-# environment.auto.tfvars
-environment = "dev"
-project     = "example"
-```
+- variables.tf (Defines Variables Without Values)
+variable "instance_type" {
+  type = string
+}
+variable "vpc_id" {
+  type = string
+}
+variable "subnet_id" {
+  type = string
+}
+variable "environment" {
+  type = string
+}
+
+- Environment-Specific Variable Files
+- prod.tfvars (For Production Environment)
+instance_type = "t3.large"
+vpc_id        = "vpc-12345678"
+subnet_id     = "subnet-abcdef12"
+environment   = "prod"
+
+- test.tfvars (For Testing Environment)
+instance_type = "t2.micro"
+vpc_id        = "vpc-87654321"
+subnet_id     = "subnet-fedcba21"
+environment   = "test"
+
+{
+  "resources": [
+    {
+      "type": "aws_instance",
+      "name": "app",
+      "instances": [
+        {
+          "attributes": {
+            "ami": "ami-0c55b159cbfafe1f0",
+            "instance_type": "t2.micro",
+            "subnet_id": "subnet-fedcba21",
+            "tags": {
+              "Name": "test-app"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
+# How auto.tfvars Works
+Any file ending in *.auto.tfvars is automatically loaded when running terraform apply.
+No need to specify -var-file manually.
+If -var-file is used, Terraform ignores *.auto.tfvars and only uses the explicitly mentioned variable file.
+Example Without -var-file (auto.tfvars is used)
 
 **Loading Priority (highest to lowest):**
 1. Command line flags (`-var` and `-var-file`)
@@ -797,12 +888,8 @@ project     = "example"
 5. Environment variables (`TF_VAR_name`)
 6. Default values in variable declarations
 
-**Best Practices:**
-1. Use `terraform.tfvars` for common variable values (but don't commit secrets)
-2. Use `.auto.tfvars` files to separate concerns (e.g., `network.auto.tfvars`, `security.auto.tfvars`)
-3. Use environment-specific files with `-var-file` (e.g., `terraform apply -var-file="prod.tfvars"`)
-4. Consider `.gitignore` for sensitive `.tfvars` files
-5. For CI/CD, generate `.tfvars` files during the pipeline
+Default values → Stored in auto.tfvars (automatically loaded if no -var-file is specified).
+Environment-specific values → Stored in prod.tfvars, test.tfvars, etc. (must be specified explicitly using -var-file).
 
 ## Advanced Provider Configuration
 
@@ -811,32 +898,30 @@ project     = "example"
 **Answer:**
 Multiple provider configurations allow you to manage resources across different regions, accounts, or with different settings in the same Terraform configuration.
 
-**Example with AWS provider across regions:**
-```hcl
-# Default provider configuration
+# Default provider (us-east-1)
 provider "aws" {
   region = "us-east-1"
 }
 
-# Additional provider configuration for west region
+# Additional provider configuration (us-west-2)
 provider "aws" {
   alias  = "west"
   region = "us-west-2"
 }
 
-# Using the default provider
+# Instance using the default provider (us-east-1)
 resource "aws_instance" "east_instance" {
   ami           = "ami-0c55b159cbfafe1f0"
   instance_type = "t2.micro"
 }
 
-# Using the aliased provider
+# Instance using the aliased provider (us-west-2)
 resource "aws_instance" "west_instance" {
-  provider      = aws.west
+  provider      = aws.west  # Specifies the "west" alias
   ami           = "ami-0892d3c7ee96c37be"
   instance_type = "t2.micro"
 }
-```
+
 
 **Example with multiple AWS accounts:**
 ```hcl
@@ -850,30 +935,6 @@ provider "aws" {
   alias   = "development"
   region  = "us-east-1"
   profile = "development"
-}
-```
-
-**Passing providers to modules:**
-```hcl
-module "vpc" {
-  source = "./modules/vpc"
-  
-  providers = {
-    aws = aws.west
-  }
-}
-```
-
-**Within module definition:**
-```hcl
-# modules/vpc/main.tf
-terraform {
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = ">= 3.0.0"
-    }
-  }
 }
 ```
 
@@ -913,60 +974,4 @@ resource "aws_ec2_transit_gateway_peering_attachment" "example" {
   transit_gateway_id      = aws_ec2_transit_gateway.east.id
 }
 
-Cross-Account Management:
-# Provider for account A (source account)
-provider "aws" {
-  region = "us-east-1"
-  alias  = "account_a"
-  profile = "account_a"
-}
-
-# Provider for account B (assumes a role in destination account)
-provider "aws" {
-  region = "us-east-1"
-  alias  = "account_b"
-  
-  assume_role {
-    role_arn     = "arn:aws:iam::ACCOUNT_B_ID:role/TerraformCrossAccountRole"
-    session_name = "terraform-cross-account"
-  }
-}
-
-# Resource in account A
-resource "aws_s3_bucket" "account_a_bucket" {
-  provider = aws.account_a
-  bucket   = "account-a-bucket"
-}
-
-# Resource in account B
-resource "aws_s3_bucket" "account_b_bucket" {
-  provider = aws.account_b
-  bucket   = "account-b-bucket"
-}
-
-Cross-Account Resource Sharing (AWS RAM example):
-# Share a subnet from account A with account B
-resource "aws_ram_resource_share" "example" {
-  provider = aws.account_a
-  name     = "cross-account-subnet-share"
-}
-
-resource "aws_ram_resource_association" "example" {
-  provider           = aws.account_a
-  resource_arn       = aws_subnet.example.arn
-  resource_share_arn = aws_ram_resource_share.example.arn
-}
-
-resource "aws_ram_principal_association" "example" {
-  provider           = aws.account_a
-  principal          = "ACCOUNT_B_ID"
-  resource_share_arn = aws_ram_resource_share.example.arn
-}
-
-Best Practices:
-Use a separate state file for each account/region combination
-Minimize cross-region/cross-account dependencies
-Document the required IAM permissions for cross-account access
-Consider using AWS Organizations for managing multi-account setups
-For complex multi-account scenarios, consider using tools like Terragrunt
 
