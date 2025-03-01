@@ -59,6 +59,24 @@ A team member pushed a commit that broke the production build. Instead of deleti
 # Revert a commit and create a new commit with the rollback
 $ git revert <commit-hash>
 ```
+Case 1: Bad Commit, NOT Pushed Yet
+✅ Solution: git reset --hard HEAD~1
+
+You made changes → committed them → realized it was bad.
+You haven’t pushed yet.
+Running git reset --hard HEAD~1 completely removes the last commit and all changes from your working directory.
+Result: The bad commit is gone like it never happened. No history, no trace, clean slate.
+Case 2: Bad Commit, ALREADY Pushed, and It Broke the Build
+✅ Solution: git revert HEAD
+
+The bad commit is already in the remote repository (pushed).
+The build failed because of it.
+Running git revert HEAD creates a new commit that undoes everything from the bad commit.
+What happens after git revert HEAD?
+The bad commit stays in history, but a new commit is created that cancels out its changes.
+The codebase is now back to normal—just like it was before you made the bad commit.
+Your local Git status is clean—no need for extra steps.
+The build will work again because the bad changes are now reversed.
 
 ---
 
@@ -110,9 +128,11 @@ $ git push origin main
 
 **Example Commands:**
 ```sh
+
 # Rebase your branch onto the remote
 $ git pull --rebase origin main
-```
+Your local commits stay as they are, but your branch gets updated with the latest remote changes.
+this is when i have some commits in local but my remote is already ahead as someone pushed to main while i was working.
 
 ---
 
@@ -131,14 +151,16 @@ $ git reset --soft HEAD~1
 **Real-Life Example:**
 You are working on `feature-payment`, but your manager asks you to switch to `bugfix-login` for an urgent fix. You need to save your work before switching branches.
 
-```sh
 $ git stash
-$ git checkout bugfix-login
-$ git stash pop
-```
-- Use this to save temporary work before switching branches.
+Use git stash if you are in the middle of work and don't want to commit yet.
 
-### Deleting a Local Branch After Merging
+$ git checkout bugfix-login
+
+$ git stash pop
+back to this branch and carry on with changes.
+
+
+# Deleting a Local Branch After Merging
 **Real-Life Example:**
 You finished working on a feature (`feature-analytics`), merged it into `main`, and now want to remove it from your local system to keep things clean.
 
