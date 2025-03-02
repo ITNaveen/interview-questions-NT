@@ -22,35 +22,15 @@ Networking Flexibility: Works with AWS VPC, ALB, and Service Mesh.
 
 🔹 EKS vs. Self-Managed Kubernetes
 
-Feature
+Feature                                                 Amazon EKS                                                Self-Managed Kubernetes
 
-Amazon EKS
+Control Plane                                           Managed by AWS                                            You manage everything
 
-Self-Managed Kubernetes
+Scalability                                             AWS Auto Scaling                                          Manual configuration
 
-Control Plane
+Security                                                IAM integration                                           Needs manual setup
 
-Managed by AWS
-
-You manage everything
-
-Scalability
-
-AWS Auto Scaling
-
-Manual configuration
-
-Security
-
-IAM integration
-
-Needs manual setup
-
-Maintenance
-
-AWS handles updates
-
-You must update manually
+Maintenance                                             AWS handles updates                                       You must update manually
 
 # 2. Setting Up an EKS Cluster
 

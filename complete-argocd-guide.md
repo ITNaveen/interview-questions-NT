@@ -137,9 +137,14 @@ resource.customizations.health.mongodb.com/MongoDB: |
 
 ### "Explain the difference between ArgoCD's automated and manual sync policies."
 
-"I work with both sync policies daily. For our development environments, we use automated sync with selfHeal and prune enabled. This means any change to the Git repo is automatically applied, and any manual changes to the cluster are automatically reverted. Just last week, this saved us when a developer tried to debug by directly editing a deployment in Kubernetes - ArgoCD detected and reverted the change, preventing confusion.
+Development Environment: Automated Sync with SelfHeal & Prune
+Automated Sync: Any change made in the Git repository is automatically applied to the Kubernetes cluster.
+SelfHeal Enabled: If someone manually changes something directly in the cluster (instead of updating Git), ArgoCD automatically reverts the change to match Git.
+Prune Enabled: If something in the cluster is not present in the Git repo (e.g., a deleted resource), it gets removed automatically.
+Example: A developer manually edited a Kubernetes deployment to debug an issue. However, because of SelfHeal, ArgoCD reverted the change to match what was in Git, preventing inconsistencies and confusion.
 
-For production, we use manual sync policy. When changes are detected, ArgoCD shows them as 'OutOfSync' but doesn't apply them until someone with appropriate permissions approves. This gives us an extra verification step for critical environments."
+In production, ArgoCD continuously monitors the Git repository. When a developer pushes new code or changes to the repo, ArgoCD detects that the cluster no longer matches Git and marks the application as "OutOfSync." However, because it's set to manual sync, ArgoCD does not automatically apply the changes.
+Instead, someone with the right permissions (like a DevOps engineer or an SRE) has to manually approve and trigger the sync in ArgoCD. This extra step ensures that changes are reviewed before they go live in production.
 
 ### "How does ArgoCD handle secrets management?"
 
@@ -147,7 +152,32 @@ For production, we use manual sync policy. When changes are detected, ArgoCD sho
 
 ### "How would you implement a multi-cluster deployment strategy using ArgoCD?"
 
-"We actually do this daily with our microservices architecture. We use the ApplicationSet controller to manage deployments across our development, staging, and production clusters. The ApplicationSet uses a list generator to create variations of our applications for each environment with environment-specific configurations. We maintain a single Git repository with Kustomize overlays for each environment, which makes it easy to promote changes from dev to staging to production while maintaining environment-specific configurations."
+What is the ApplicationSet Controller?
+The ApplicationSet controller is an ArgoCD feature that automates the creation and management of multiple ArgoCD applications.
+It allows you to define a single template and generate multiple applications dynamically based on different parameters (like cluster names, environments, or Git branches).
+This helps manage multi-cluster deployments efficiently.
+How the ApplicationSet Works in This Case
+ApplicationSet Uses a List Generator
+
+The List Generator inside the ApplicationSet defines multiple environments (development, staging, production).
+It creates a separate ArgoCD application instance for each environment.
+Example:
+dev-cluster → Deploys app with dev settings.
+staging-cluster → Deploys app with staging settings.
+prod-cluster → Deploys app with production settings.
+Single Git Repository with Kustomize Overlays
+
+The team stores all configurations in a single Git repo.
+Uses Kustomize overlays to apply different environment-specific settings.
+Example:
+base/ contains common configs (same for all environments).
+overlays/dev/ has dev-specific configs.
+overlays/staging/ has staging-specific configs.
+overlays/prod/ has prod-specific configs.
+Promotion of Changes
+
+Changes start in development, then are promoted to staging, and finally to production by merging Git branches.
+ArgoCD automatically detects changes and deploys them based on the environment.
 
 ### "Explain how to implement a progressive delivery deployment with ArgoCD."
 

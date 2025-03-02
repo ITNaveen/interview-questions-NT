@@ -49,20 +49,74 @@ Elasticsearch is like a super-powered search engine designed specifically for lo
 - **Node**: A single Elasticsearch server
 - **Cluster**: A group of connected Elasticsearch nodes
 
-## Logstash: The Log Processor
+# Elasticsearch is a distributed search and analytics engine that stores and manages log data efficiently. It organizes data using three key components: Index, Document, and Shard.
 
-Logstash is like a pipeline that takes logs from different sources, cleans them up, and sends them to Elasticsearch.
+1️⃣ Index: The Logical Collection of Documents
+An index in Elasticsearch is like a database in SQL. It groups related documents together.
 
-### Key Features:
-- **Input plugins**: Can collect logs from many different sources
-- **Filter plugins**: Can transform and structure your log data
-- **Output plugins**: Can send logs to different destinations (usually Elasticsearch)
+🔹 Example: If you have a logging system, you might use time-based indexes, where logs are stored based on the date.
 
-### How Logstash Works:
-1. **Collect**: Gather logs from various sources
-2. **Parse**: Break down logs into structured fields
-3. **Transform**: Convert timestamps, add information, filter unwanted events
-4. **Output**: Send the processed logs to Elasticsearch
+logs-2024-03-01 → Stores logs for March 1, 2024
+logs-2024-03-02 → Stores logs for March 2, 2024
+2️⃣ Document: The Individual Log Entry
+Each log entry is stored as a document inside an index. A document is a JSON object containing structured log data.
+
+🔹 Example Document (A Single Log Entry)
+{
+  "timestamp": "2024-03-02T12:34:56Z",
+  "level": "ERROR",
+  "service": "auth-service",
+  "message": "Failed to connect to database",
+  "host": "server-1"
+}
+Each log entry = One document
+Documents are stored inside an index (e.g., logs-2024-03-02)
+3️⃣ Shard: How Elasticsearch Stores Index Data
+An index is divided into multiple shards, and each shard holds a portion of the documents. This improves performance and scalability.
+
+🔹 Why Use Shards?
+✅ Distributes data across nodes to handle large volumes efficiently.
+✅ Enables parallel search by querying multiple shards simultaneously.
+✅ Provides fault tolerance with replica shards (backup copies).
+
+🔹 Example of Sharding for a Time-Based Index (logs-2024-03-02)
+Let’s say you configure:
+
+Primary Shards: 3
+Replica Shards: 1 (Each primary shard has 1 backup)
+
+📌 How Data is Stored in Shards
+Shard	    Logs Stored (Subset of Today’s Logs)	       Replica Shard (Backup)
+Shard 1 	Logs from pod-A, pod-B, pod-C	               Replica of Shard 1 on another node
+Shard 2	    Logs from pod-D, pod-E, pod-F	               Replica of Shard 2 on another node
+Shard 3	    Logs from pod-G, pod-H, pod-I	               Replica of Shard 3 on another node
+
+📌 How Queries Work
+- When searching logs in logs-2024-03-02:
+- Elasticsearch queries all shards in parallel for faster results.
+
+If a node with Shard 2 fails, the replica shard takes over to prevent data loss.
+
+🔹 Summary
+Concept	                Definition	                                                Example
+Index	                Logical grouping of documents (like a database)	            logs-2024-03-02 (logs for today)
+Document	            A single log entry in JSON format	                        { "timestamp": "2024-03-02T12:34:56Z", "level": "ERROR", "service": "auth-service" }
+Shard	                A subset of an index, used for scaling	                    logs-2024-03-02 split into 3 shards
+
+# Fluent Bit: The Lightweight Log Forwarder
+Fluent Bit is a lightweight, high-performance log processor that collects, filters, and forwards logs to Elasticsearch and other destinations. It is optimized for low resource consumption, making it ideal for cloud-native environments like Kubernetes.
+
+- Key Features:
+Input plugins: Collects logs from files, containers (Docker, Kubernetes), and system logs.
+Filter plugins: Allows basic filtering, enrichment, and transformation of logs.
+Output plugins: Sends logs to various destinations, including Elasticsearch, Kafka, and Loki.
+
+- How Fluent Bit Works:
+Collect: Gathers logs from multiple sources (e.g., container logs, files, system logs).
+Filter: Applies lightweight transformations (e.g., removing unnecessary logs, modifying fields).
+Parse: Extracts structured data from raw log messages if needed.
+Forward: Sends the logs efficiently to Elasticsearch or other storage backends.
+Fluent Bit is preferred for fast, lightweight log forwarding in Kubernetes and containerized environments, while Logstash is better for complex log transformations. 🚀
 
 ## Kibana: The Visualization Tool
 
@@ -73,15 +127,6 @@ Kibana is the window into your logs. It's a web interface that lets you search, 
 - **Visualize**: Create charts, graphs, and other visualizations
 - **Dashboard**: Combine visualizations into information-packed dashboards
 - **Dev Tools**: Run direct queries against Elasticsearch
-
-## FluentBit: The Log Collector
-
-In modern Kubernetes environments like EKS, FluentBit often replaces or works alongside Logstash for collecting logs.
-
-### Key Differences from Logstash:
-- **Lightweight**: Uses much less memory and CPU
-- **Kubernetes-friendly**: Designed to work well in container environments
-- **Simple configuration**: Easier to set up for basic log forwarding
 
 ### How FluentBit Works in EKS:
 1. Runs as a DaemonSet (one copy on each Kubernetes node)
@@ -188,3 +233,65 @@ A: I'd check Elasticsearch's disk space (it stops if over 95% full), verify Flue
 
 **Q: How do you monitor the ELK stack itself?**
 A: I use Elasticsearch's built-in monitoring features, set up alerts for cluster health status changes, monitor disk usage closely, and track ingestion rates to catch any sudden changes.
+
+# 🔹 Kibana Alerts (Elasticsearch-based Alerting)
+🚀 "In our environment, we use Kibana alerts primarily for log-based monitoring and anomaly detection. The easiest way to set up an alert is through the built-in Kibana Rule Management."
+
+🛠 How I Set Up an Alert in Kibana:
+Go to ➝ Kibana → Stack Management → Rules.
+Create a New Rule: Choose a "Log Threshold" rule to monitor logs in Elasticsearch.
+Define a Condition:
+Example: Trigger an alert if we see more than 10 "ERROR" logs in 5 minutes.
+Set an Action:
+Send an alert to Slack, Email, PagerDuty, or Webhook.
+Save & Enable the Rule: Kibana will now monitor logs and notify us if the condition is met.
+📌 Example Use Case:
+"Just last week, a developer introduced a misconfiguration in our authentication service, causing multiple 500 errors. Our Kibana alert detected a spike in error logs and immediately notified us in Slack before users were impacted."
+
+# 🔹 Kibana Alert Conditions (Log-Based Alerts) – Debugging Steps
+1️⃣ HTTP 500 Error Spike → Status code 500 appears more than 10 times in 5 minutes → 🔔 Alert
+
+Reason: A bug in the application, database connectivity issues, or dependency failures.
+Debug: Check Kibana logs for stack traces, inspect recent deployments, and verify database connections.
+2️⃣ High Latency → Requests with response_time > 2s occur more than 50 times in 10 minutes → 🔔 Alert
+
+Reason: Slow database queries, overloaded servers, or inefficient API endpoints.
+Debug: Use APM traces to find slow endpoints, analyze DB query execution times, and check system load.
+3️⃣ Database Connection Failures → Log message contains "DB connection failed" more than 5 times in 5 minutes → 🔔 Alert
+
+Reason: Database server is down, connection pool exhaustion, or incorrect credentials/configuration.
+Debug: Check database logs, test manual connections, and verify database connection pool settings.
+4️⃣ Unauthorized Access Attempts → Status code 401/403 appears more than 20 times from a single IP in 10 minutes → 🔔 Alert
+
+Reason: Brute-force attack, expired credentials, or misconfigured authentication settings.
+Debug: Identify the source IP, check authentication logs, and review security policies.
+5️⃣ Service Crash Detected → Log message contains "OOMKilled" or "CrashLoopBackOff" → 🔔 Alert
+
+Reason: Application exceeding memory limits, segmentation faults, or missing dependencies.
+Debug: Check pod logs, inspect Kubernetes events, and analyze memory usage patterns.
+
+
+,,,,,,,,,
+.........
+
+# 🔹 Prometheus Alert Conditions (Metrics-Based Alerts) – Debugging Steps
+1️⃣ High CPU Usage → avg(rate(container_cpu_usage_seconds_total[5m])) > 0.8 for 2 minutes → 🔔 Alert
+
+Reason: Infinite loops in the code, unoptimized processes, or insufficient CPU resources.
+Debug: Check top or htop inside the container, profile running processes, and review autoscaling settings.
+2️⃣ High Memory Usage → Container memory usage exceeds 90% of the allocated limit → 🔔 Alert
+
+Reason: Memory leaks in the application, inefficient caching, or over-provisioned workloads.
+Debug: Use kubectl top pod, check memory allocation in Prometheus, and inspect application logs for leaks.
+3️⃣ Pod Restarting Too Frequently → rate(kube_pod_container_status_restarts_total[5m]) > 3 → 🔔 Alert
+
+Reason: Application crashes, insufficient resources, or failing health checks.
+Debug: Inspect pod logs, describe pod events (kubectl describe pod), and check resource limits.
+4️⃣ Slow HTTP Response Time → histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 2 → 🔔 Alert
+
+Reason: Slow backend processing, increased traffic load, or database performance bottlenecks.
+Debug: Analyze request latency in Grafana, check API logs, and optimize database queries.
+5️⃣ Node Disk Almost Full → node_filesystem_free_bytes / node_filesystem_size_bytes < 0.1 → 🔔 Alert
+
+Reason: Logs filling up disk, unused temporary files, or misconfigured persistent volumes.
+Debug: Check disk usage with df -h, clear unnecessary files, and review log rotation policies.

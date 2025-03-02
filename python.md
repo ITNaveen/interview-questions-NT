@@ -99,56 +99,23 @@ Run crontab -e and add:
 
 */10 * * * * python /path/to/ec2_health.py
 
-# 3. Kubernetes Auto-Restart for Failing Pods
+The cron schedule */10 * * * * means:
+*/10 → Every 10 minutes
 
-📌 What Does This Script Do?
+🔹 Key Difference
+Expression	Runs At
+*/10 * * * *	Every 10 minutes (0, 10, 20, 30, 40, 50)
+10 * * * *	At the 10th minute of every hour (12:10, 13:10, 14:10...)
 
-Detects failing Kubernetes pods and restarts them.
+* * * * * <command>
+| | | | |  
+| | | | └── Day of the week (0 - 7) [0 or 7 = Sunday]  
+| | | └──── Month (1 - 12)  
+| | └────── Day of the month (1 - 31)  
+| └──────── Hour (0 - 23)  
+└────────── Minute (0 - 59)  
 
-🏗 Where to Put This Script?
 
-On a Kubernetes worker node.
-
-🔧 How to Automate It?
-
-Schedule a Kubernetes CronJob to run this script every 5 minutes.
-
-📝 Python Script (k8s_restart.py):
-
-from kubernetes import client, config
-
-config.load_kube_config()
-v1 = client.CoreV1Api()
-
-pods = v1.list_namespaced_pod(namespace="default")
-
-for pod in pods.items:
-    name = pod.metadata.name
-    state = pod.status.phase
-    
-    if state != "Running":
-        print(f"Restarting pod: {name}")
-        v1.delete_namespaced_pod(name=name, namespace="default")
-
-⏳ Automate with Kubernetes CronJob:
-
-Apply this YAML file:
-
-apiVersion: batch/v1
-kind: CronJob
-metadata:
-  name: restart-failed-pods
-spec:
-  schedule: "*/5 * * * *"
-  jobTemplate:
-    spec:
-      template:
-        spec:
-          containers:
-          - name: restart-failed-pods
-            image: python:3.8
-            command: ["python", "k8s_restart.py"]
-          restartPolicy: OnFailure
 
 # 4. Log Analysis (Detect Errors in Logs)
 
@@ -177,6 +144,22 @@ print(f"Found {error_count} errors in logs.")
 📌 What Does This Script Do?
 
 Finds stopped EC2 instances and unused EBS volumes to save cost.
+
+import boto3
+
+ec2 = boto3.client("ec2")
+
+# Find stopped EC2 instances
+stopped_instances = ec2.describe_instances(Filters=[{"Name": "instance-state-name", "Values": ["stopped"]}])
+instances = [i["InstanceId"] for r in stopped_instances["Reservations"] for i in r["Instances"]]
+
+# Find unused EBS volumes
+unused_volumes = ec2.describe_volumes(Filters=[{"Name": "status", "Values": ["available"]}])
+volumes = [v["VolumeId"] for v in unused_volumes["Volumes"]]
+
+print("Stopped EC2 Instances:", instances if instances else "None")
+print("Unused EBS Volumes:", volumes if volumes else "None")
+
 
 🏗 Where to Put This Script?
 

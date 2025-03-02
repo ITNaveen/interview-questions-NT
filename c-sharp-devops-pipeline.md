@@ -24,10 +24,11 @@ We maintain two separate repositories:
 
 ### 2.2 Branching Strategy
 We follow a trunk-based development approach with:
-- `main` branch for production-ready code
-- Short-lived feature branches for development
-- Pull Request workflow with mandatory code reviews
-- Branch protection rules requiring successful CI checks and approvals
+In Trunk-Based Development (TBD), you:
+1️⃣ Create a short-lived feature branch from main.
+2️⃣ Work on it for 1-3 days (max).
+3️⃣ Merge it back to main quickly.
+4️⃣ Delete the feature branch after merging.
 
 ## 3. Jenkins Pipeline Configuration
 
@@ -55,9 +56,9 @@ pipeline {
         
         stage('Restore & Build') {
             steps {
-                sh 'dotnet restore'
-                sh 'dotnet build --no-restore --configuration Release'
-            }
+                sh 'dotnet restore'  # This downloads and installs any missing NuGet packages listed in the .csproj
+                sh 'dotnet build --no-restore --configuration Release' # This ensures that all source files are compiled, and an output (DLLs or EXEs) is generated.
+            }        # Compilation is the process of converting human-readable C# source code (.cs files) into machine-readable binary code (DLLs or EXEs).
         }
         
         stage('Unit Tests') {
@@ -70,27 +71,57 @@ pipeline {
                 }
             }
         }
-        
+What Do Unit Tests Check?
+Unit tests verify small, isolated parts of the code to ensure they behave as expected.
+Here’s what unit tests typically check:
+✅ Business logic correctness (e.g., does a method return the expected result?)
+✅ Edge cases and error handling (e.g., does it handle null values properly?)
+✅ Mathematical or logical operations (e.g., does a calculation return the correct value?)
+✅ Functionality of classes/methods in isolation (without database, API calls, etc.)
+unit test is placed under test dir as .cs extention.
+
         stage('SonarQube Analysis') {
             steps {
                 withSonarQubeEnv('SonarQube') {
                     sh '''
                         dotnet sonarscanner begin \
-                          /k:"${SONAR_PROJECT_KEY}" \
-                          /d:sonar.cs.opencover.reportsPaths="**/coverage.opencover.xml" \
-                          /d:sonar.cs.vstest.reportsPaths="**/TestResults/*.trx" \
-                          /d:sonar.coverage.exclusions="**Tests*.cs,**/Program.cs" \
-                          /d:sonar.cpd.exclusions="**/Migrations/*.cs" \
-                          /d:sonar.cs.roslyn.reportPaths="**/analyzer-results.json" \
-                          /d:sonar.exclusions="**/obj/**,**/bin/**"
+                          /k:"${SONAR_PROJECT_KEY}" \    // Sets the unique SonarQube project key
+                          /d:sonar.cs.opencover.reportsPaths="**/coverage.opencover.xml" \      //Loads code coverage data from unit tests.
+                          /d:sonar.cs.vstest.reportsPaths="**/TestResults/*.trx" \              // Loads unit test results from the trx test report.
+                          /d:sonar.coverage.exclusions="**Tests*.cs,**/Program.cs" \            //Excludes test files and Program.cs from coverage analysis.
+                          /d:sonar.cpd.exclusions="**/Migrations/*.cs" \                        //Excludes duplicate code detection for Entity Framework Migrations.
+                          /d:sonar.cs.roslyn.reportPaths="**/analyzer-results.json" \           //Integrates Roslyn Analyzers (Microsoft's static code analysis tool).
+                          /d:sonar.exclusions="**/obj/**,**/bin/**"         //Excludes compiled files (bin/, obj/) from analysis.
                         
                         dotnet build --no-restore --configuration Release
                         
-                        dotnet sonarscanner end
+                        dotnet sonarscanner end   //Finalizes the SonarQube scan and sends results to the SonarQube server.
                     '''
                 }
             }
         }
+How It Works in Jenkins
+
+    Jenkins triggers the SonarScanner during a build.
+    SonarScanner analyzes the code and pushes the results to SonarQube.
+    You check the results in the SonarQube UI.
+
+SonarQube checks for:
+✔ Code quality issues (bad practices, duplicate code, complex methods, etc.)
+✔ Security vulnerabilities (e.g., SQL injection, hardcoded credentials)
+✔ Maintainability issues (e.g., too many nested loops, long methods)
+✔ Code coverage (how much of your code is tested by unit tests)
+Code smells are not bugs, but they make the code harder to maintain and can lead to real problems in the future.
+
+
+Key Difference Between Unit Tests & SonarQube
+🔍 Unit Tests (Functional Testing)	                                   🛠 SonarQube (Code Quality Analysis)
+✅ Checks code functionality (Does the code work as expected?)	      ✅ Checks code quality, security, and maintainability
+✅ Runs actual test cases against functions/classes	                  ✅ Static code analysis (without running the program)
+✅ Uses test frameworks like xUnit, NUnit, MSTest	                  ✅ Uses SonarQube rules and analysis tools
+✅ Detects logic errors (e.g., incorrect calculations)	              ✅ Detects bad coding practices (e.g., duplicate code, security flaws)
+✅ Generates test reports (Pass/Fail results)	                      ✅ Generates code quality reports (bugs, vulnerabilities, code smells)
+❌ Does not check for security issues or code duplication	          ❌ Does not validate whether functions work correctly
         
         stage('Quality Gate') {
             steps {
@@ -171,7 +202,8 @@ pipeline {
                         error "Found ${vulnerabilityCount} HIGH or CRITICAL vulnerabilities in the container"
                     }
                 }
-                
+Trivy scans Docker images by checking OS packages and application dependencies against databases like GitHub Security Advisories, NVD, and OS security trackers. For C# projects, it looks at NuGet package vulnerabilities and CVEs in dependencies. If Trivy finds HIGH or CRITICAL vulnerabilities, we fail the pipeline to ensure secure deployments.
+
                 // Publish scan results to Artifactory
                 rtUpload (
                     serverId: 'artifactory',
@@ -244,7 +276,9 @@ pipeline {
                 '''
             }
         }
-        
+
+The approval process happens in Jenkins, where the pipeline pauses using the input step. A user must manually approve the deployment in Jenkins UI. Once approved, the pipeline updates the production manifest in Git, and ArgoCD automatically syncs the change to deploy it
+
         stage('Promote to Production') {
             steps {
                 input message: 'Promote to production?', ok: 'Approve'
@@ -274,6 +308,7 @@ pipeline {
     }
 }
 ```
+
 
 ## 4. SonarQube for C# Applications: In-Depth Analysis
 
@@ -692,7 +727,14 @@ A: To optimize Trivy scanning in our CI/CD pipeline, I've implemented several te
 A: For our C# applications using Entity Framework, I've implemented a separation between application deployment and database migrations. In the CI pipeline, we generate migration scripts and validate them with tests. Before deployment, we run a separate job that applies migrations using a dedicated service account with appropriate permissions. For production, we generate a migration plan that's reviewed before execution, and we implement transaction rollback capability for failed migrations. We also maintain database snapshots before significant schema changes as an additional safety measure.
 
 **Q: How do you manage secrets across your pipeline?**  
-A: We use a multi-layered approach to secrets management. Jenkins credentials are stored in the Jenkins credential store and injected at runtime. For application secrets, we use HashiCorp Vault with short-lived credentials and automatic rotation. In Kubernetes, we use a combination of sealed secrets for GitOps and the external secrets operator to fetch credentials from Vault. Our Trivy scans specifically look for leaked secrets in images, and SonarQube checks for hardcoded credentials in code.
+We use a multi-layered approach to secrets management. For CI/CD, Jenkins credentials are securely stored in AWS Secrets Manager and retrieved at runtime using the AWS CLI or Jenkins plugins. Application secrets are also managed in AWS Secrets Manager with fine-grained IAM policies, ensuring least-privilege access. In Kubernetes, we use the External Secrets Operator to fetch secrets dynamically from AWS Secrets Manager and inject them into pods as environment variables or Kubernetes secrets. Our security pipeline includes Trivy scans to detect exposed credentials in images and SonarQube to check for hardcoded secrets in the codebase.
 
 **Q: How do you ensure zero-downtime deployments with your ArgoCD setup?**  
-A: In our ArgoCD deployment strategy, we use Kubernetes rolling updates with proper readiness and liveness probes for our C# applications. I've configured pod disruption budgets to ensure minimum availability during updates. For database-dependent applications, we implement backward compatibility in our APIs to support N-1 version coexistence. ArgoCD is configured to monitor deployment health metrics, and we use the synchronization waves feature to control the order of resource updates. For critical changes, we use Blue/Green deployments with a session draining period to ensure a smooth transition.
+"We ensure zero-downtime deployments using the Blue-Green Deployment strategy. In this approach, we deploy a new version (Blue) while keeping the current version (Green) running. Once the Blue version is tested and verified, we switch all traffic to it and shut down the Green version. This ensures that users always interact with a fully running application, eliminating downtime."
+
+"We also configure liveness and readiness probes to ensure smooth transitions:"
+
+    Readiness Probe 🟢 → Ensures the new pod is fully started before receiving traffic.
+    Liveness Probe 🔴 → Detects if a pod becomes unresponsive and automatically restarts it.
+
+"Compared to other deployment strategies, Blue-Green provides a fast rollback mechanism—if an issue is detected after switching, we can instantly revert traffic back to the previous version. This makes it highly reliable for production deployments."
