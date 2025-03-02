@@ -59,6 +59,7 @@ resource "aws_instance" "my_vm" {
 resource "aws_security_group" "my_sg" {
   name = "my-security-group"
 }
+Terraform Creates SG First, Then EC2 – But Deletes EC2 First, Then SG ✅
 
 ### 3. Explain the concept of idempotence in Terraform and why it's important.
 
