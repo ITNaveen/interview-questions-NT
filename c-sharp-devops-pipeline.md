@@ -203,6 +203,10 @@ Key Difference Between Unit Tests & SonarQube
                     }
                 }
 Trivy scans Docker images by checking OS packages and application dependencies against databases like GitHub Security Advisories, NVD, and OS security trackers. For C# projects, it looks at NuGet package vulnerabilities and CVEs in dependencies. If Trivy finds HIGH or CRITICAL vulnerabilities, we fail the pipeline to ensure secure deployments.
+🛠️ Trivy is a security tool that checks for problems in your .NET app.
+✅ It looks at system software inside your app (Windows/Linux packages).
+✅ It scans NuGet packages (external .NET libraries your app uses).
+✅ It finds security issues (known vulnerabilities hackers can exploit).
 
                 // Publish scan results to Artifactory
                 rtUpload (
