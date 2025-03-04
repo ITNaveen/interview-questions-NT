@@ -23,6 +23,9 @@ securityContext:
     drop: ["ALL"]
     add: ["NET_ADMIN"]
 ```
+# Correct!
+Admission Controller → Controls CRUD (Create, Read, Update, Delete) at the API level
+Security Context → Defines security parameters inside a Pod/Container
 
 This enhances security by:
 - Preventing containers from running as root (`runAsNonRoot: true`)
@@ -152,9 +155,12 @@ A secure container image pipeline involves multiple layers of validation and sec
    - Set up image retention policies
 
 6. **Admission Control**:
-   - Implement OPA/Gatekeeper or Kyverno admission controllers
-   - Enforce image signing verification with policies
-   - Configure ImagePolicyWebhook to validate image sources
+✅ 5 Practical Things Gatekeeper Can Enforce
+1️⃣ Enforce mandatory labels (e.g., team, environment) on Deployments and Pods.
+2️⃣ Restrict running as root user by enforcing runAsNonRoot: true.
+3️⃣ Block privileged containers by ensuring securityContext.privileged: false.
+4️⃣ Allow only approved container registries (e.g., company-registry.io/*).
+5️⃣ Enforce resource limits (cpu, memory) to prevent excessive resource usage.
 
 7. **Runtime Security**:
    - Use Pod Security Standards in Restricted mode
@@ -261,6 +267,11 @@ Kubernetes Ingress controllers are specialized load balancers that manage extern
 2. Ingress resources define routing rules
 3. The controller watches these resources to configure the underlying load balancer
 
+✅ Setting Up Ingress in Kubernetes
+To set up Ingress, you need two things:
+1️⃣ Ingress Controller (runs as a DaemonSet or Deployment).
+2️⃣ Ingress Resource (defines routing rules for traffic).
+
 **Common Ingress Controllers**:
 
 1. **NGINX Ingress Controller**:
@@ -269,23 +280,18 @@ Kubernetes Ingress controllers are specialized load balancers that manage extern
    - Supports TCP/UDP, websockets, regex routing
    - Works with multiple cloud providers
 
-2. **Traefik**:
-   - Auto-discovery capabilities and dynamic reconfiguration
-   - Native integration with Let's Encrypt
-   - Good dashboard and observability
-   - Modern architecture with CRDs for configuration
-
 3. **AWS ALB Ingress Controller**:
    - Native integration with AWS Application Load Balancers
    - Better cost efficiency on AWS
    - Seamless AWS WAF integration
    - Per-path target group support
 
-4. **Istio Ingress Gateway**:
-   - Part of the service mesh architecture
-   - Advanced traffic management
-   - Integrated with mesh security and observability
-   - More complex but powerful
+🔹 Advantages of AWS ALB Ingress Controller over NGINX
+1️⃣ AWS Native Integration → Directly integrates with AWS ALB, Target Groups, and Route 53.
+2️⃣ Automatic Load Balancer Creation → Creates ALB automatically instead of manually managing an NGINX LoadBalancer.
+3️⃣ Better Scaling → Uses AWS Elastic Load Balancing (ELB), scaling based on demand.
+4️⃣ IAM & Security Integration → Supports AWS IAM roles, WAF, and SSL termination via ACM.
+5️⃣ Cost-Effective → You pay for ALB usage only, unlike NGINX, which needs a separate LoadBalancer.
 
 **Selection Criteria for Production**:
 
@@ -668,6 +674,14 @@ data:
     echo "Database restarted successfully."
 
 ---
+
+✅ Common Pre-Backup Actions:
+Put DB in Read-Only Mode → Prevents write operations during backup.
+Flush Database Buffers & Cache → Ensures consistent snapshots.
+Pause Heavy Workloads → Stops resource-heavy queries.
+Scale Up Resources → Temporarily increase CPU/RAM before backup.
+Send Notifications → Alert teams before backup starts.
+
 
 # 📌 CronJob: Runs daily at 2 AM to trigger a VolumeSnapshot
 apiVersion: batch/v1
