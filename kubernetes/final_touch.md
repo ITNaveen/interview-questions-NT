@@ -66,3 +66,20 @@ If not, the system fetches the credentials from PostgreSQL, validates them, and 
 My app has a product search feature that queries the PostgreSQL database.
 Instead of running expensive queries every time, Redis caches the most searched products.
 When traffic spikes, Redis read replicas scale automatically, ensuring consistent low-latency responses.
+
+# CSI - 
+CSI (Container Storage Interface) driver acts as the middle link between your pod and the EBS volume when handling PersistentVolumeClaims (PVCs) in Kubernetes.
+
+🔹 How CSI Enables EBS for Persistent Storage in EKS
+1️⃣ Pod Requests Storage → The pod makes a request for a PersistentVolumeClaim (PVC).
+2️⃣ Kubernetes Calls the CSI Driver → The EBS CSI driver provisions an EBS volume dynamically (or attaches an existing one).
+3️⃣ EBS Volume is Mounted to the Pod → The pod gets persistent storage, even if it's rescheduled.
+
+🔹 Why CSI is Important for EBS in EKS?
+✅ Dynamic Provisioning → Creates and attaches EBS volumes on-demand based on PVC requests.
+✅ Persistent Storage → Even if a pod crashes or moves to another node, EBS remains and reattaches.
+✅ Multi-AZ Support → Works with AWS EBS gp3, io1, io2 for high performance.
+✅ Storage Management → Kubernetes can automatically resize, snapshot, and delete volumes using CSI.
+
+🔹 Real-World EKS Example
+🔥 "In my EKS cluster, I use the AWS EBS CSI driver for my PostgreSQL database. When my database pod requests a 50GB storage volume, Kubernetes automatically provisions an EBS volume and mounts it to my pod. If my pod moves to another node, the volume is detached and reattached without data loss."

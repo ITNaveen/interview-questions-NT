@@ -32,6 +32,25 @@ In an Amazon EKS (Elastic Kubernetes Service) environment, here's how it all fit
 
 Let's break down each component in more detail:
 
+# 🔹 Step-by-Step Flow of Logs in EFK Setup on Kubernetes
+1️⃣ FluentBit (DaemonSet) - Collects Logs from Pods & Nodes
+FluentBit runs on every node as a DaemonSet, meaning each node has a FluentBit pod running.
+It reads logs from all running pods, containers, and even system logs (from /var/log/containers/).
+FluentBit then processes logs (parsing, filtering) and forwards them to Elasticsearch.
+👉 Think of FluentBit as the "log forwarder" in your cluster.
+
+2️⃣ Elasticsearch (StatefulSet) - Stores & Indexes Logs
+Deployed as a StatefulSet at the cluster level to provide persistent and distributed log storage.
+Receives logs from FluentBit and stores them in indices based on timestamps, namespaces, etc.
+Uses PersistentVolumes (PVs) to ensure logs are not lost if the pod restarts.
+👉 Elasticsearch acts as the "database" of logs, storing and indexing them for fast searching.
+
+3️⃣ Kibana (Deployment) - UI for Viewing Logs
+Fetches log data from Elasticsearch and displays it in a web UI.
+Provides search, filtering, and visualization tools to analyze logs.
+Helps in debugging issues, monitoring performance, and identifying failures.
+👉 Kibana is the "frontend" for querying logs and monitoring system health.
+
 ## Elasticsearch: The Log Database
 
 Elasticsearch is like a super-powered search engine designed specifically for logs and text data. It's incredibly fast at searching through huge amounts of data.
@@ -78,6 +97,39 @@ An index is divided into multiple shards, and each shard holds a portion of the 
 ✅ Distributes data across nodes to handle large volumes efficiently.
 ✅ Enables parallel search by querying multiple shards simultaneously.
 ✅ Provides fault tolerance with replica shards (backup copies).
+
+# my infra - 
+🔹 How My Elasticsearch is Structured in EKS
+1️⃣ Indexes are based on Time → Every day gets a new index (e.g., logs-2024-03-04).
+2️⃣ Each index is divided into Shards (by App) → Backend, Frontend, Database, etc.
+3️⃣ Within each Shard (App), logs are further categorized by Pod Names → Helps in filtering logs per pod.
+
+🔹 Practical Breakdown (Hierarchical View)
+✅ Step 1: Time-Based Indexing (Main Index)
+Logs for each day are stored in a separate index.
+Example:
+logs-2024-03-04
+logs-2024-03-05
+logs-2024-03-06
+📌 Why? → This keeps logs organized by date, making retention policies and queries efficient.
+
+✅ Step 2: Sharding (Dividing the Index by Application)
+Each time-based index is split into shards (where each shard stores logs for a specific application).
+Example for logs-2024-03-04:
+Shard-1 → Frontend Service Logs
+Shard-2 → Backend Service Logs
+Shard-3 → Database Logs
+📌 Why? → This allows parallel log retrieval and efficient querying for specific apps.
+
+✅ Step 3: Logs are Categorized by Pods Inside Each Shard
+Inside each shard (app-specific logs), logs are further structured per pod.
+Example (inside Shard-2 → Backend Service Logs):
+backend-pod-abc123.log
+backend-pod-xyz456.log
+📌 Why? → This helps filter logs at the pod level, making debugging easier.
+
+-------------------------------------------
+-------------------------------------------
 
 🔹 Example of Sharding for a Time-Based Index (logs-2024-03-02)
 Let’s say you configure:
@@ -250,23 +302,25 @@ Save & Enable the Rule: Kibana will now monitor logs and notify us if the condit
 
 # 🔹 Kibana Alert Conditions (Log-Based Alerts) – Debugging Steps
 1️⃣ HTTP 500 Error Spike → Status code 500 appears more than 10 times in 5 minutes → 🔔 Alert
-
+HTTP 500 (Internal Server Error) is a server-side issue, meaning something went wrong on the backend, and the server couldn't process the request successfully.
 Reason: A bug in the application, database connectivity issues, or dependency failures.
 Debug: Check Kibana logs for stack traces, inspect recent deployments, and verify database connections.
-2️⃣ High Latency → Requests with response_time > 2s occur more than 50 times in 10 minutes → 🔔 Alert
 
+2️⃣ High Latency → Requests with response_time > 2s occur more than 50 times in 10 minutes → 🔔 Alert
 Reason: Slow database queries, overloaded servers, or inefficient API endpoints.
 Debug: Use APM traces to find slow endpoints, analyze DB query execution times, and check system load.
-3️⃣ Database Connection Failures → Log message contains "DB connection failed" more than 5 times in 5 minutes → 🔔 Alert
 
+3️⃣ Database Connection Failures → Log message contains "DB connection failed" more than 5 times in 5 minutes → 🔔 Alert
 Reason: Database server is down, connection pool exhaustion, or incorrect credentials/configuration.
 Debug: Check database logs, test manual connections, and verify database connection pool settings.
-4️⃣ Unauthorized Access Attempts → Status code 401/403 appears more than 20 times from a single IP in 10 minutes → 🔔 Alert
 
+4️⃣ Unauthorized Access Attempts → Status code 401/403 appears more than 10 times from a single IP in 10 minutes → 🔔 Alert
+🔹 401 Unauthorized → The client request lacks valid authentication credentials.
+🔹 403 Forbidden → The client is authenticated but does not have permission to access the
 Reason: Brute-force attack, expired credentials, or misconfigured authentication settings.
 Debug: Identify the source IP, check authentication logs, and review security policies.
-5️⃣ Service Crash Detected → Log message contains "OOMKilled" or "CrashLoopBackOff" → 🔔 Alert
 
+5️⃣ Service Crash Detected → Log message contains "OOMKilled" or "CrashLoopBackOff" → 🔔 Alert
 Reason: Application exceeding memory limits, segmentation faults, or missing dependencies.
 Debug: Check pod logs, inspect Kubernetes events, and analyze memory usage patterns.
 
@@ -276,22 +330,21 @@ Debug: Check pod logs, inspect Kubernetes events, and analyze memory usage patte
 
 # 🔹 Prometheus Alert Conditions (Metrics-Based Alerts) – Debugging Steps
 1️⃣ High CPU Usage → avg(rate(container_cpu_usage_seconds_total[5m])) > 0.8 for 2 minutes → 🔔 Alert
-
 Reason: Infinite loops in the code, unoptimized processes, or insufficient CPU resources.
 Debug: Check top or htop inside the container, profile running processes, and review autoscaling settings.
-2️⃣ High Memory Usage → Container memory usage exceeds 90% of the allocated limit → 🔔 Alert
 
+2️⃣ High Memory Usage → Container memory usage exceeds 90% of the allocated limit → 🔔 Alert
 Reason: Memory leaks in the application, inefficient caching, or over-provisioned workloads.
 Debug: Use kubectl top pod, check memory allocation in Prometheus, and inspect application logs for leaks.
-3️⃣ Pod Restarting Too Frequently → rate(kube_pod_container_status_restarts_total[5m]) > 3 → 🔔 Alert
 
+3️⃣ Pod Restarting Too Frequently → rate(kube_pod_container_status_restarts_total[5m]) > 3 → 🔔 Alert
 Reason: Application crashes, insufficient resources, or failing health checks.
 Debug: Inspect pod logs, describe pod events (kubectl describe pod), and check resource limits.
-4️⃣ Slow HTTP Response Time → histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 2 → 🔔 Alert
 
+4️⃣ Slow HTTP Response Time → histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 2 → 🔔 Alert
 Reason: Slow backend processing, increased traffic load, or database performance bottlenecks.
 Debug: Analyze request latency in Grafana, check API logs, and optimize database queries.
-5️⃣ Node Disk Almost Full → node_filesystem_free_bytes / node_filesystem_size_bytes < 0.1 → 🔔 Alert
 
+5️⃣ Node Disk Almost Full → node_filesystem_free_bytes / node_filesystem_size_bytes < 0.1 → 🔔 Alert
 Reason: Logs filling up disk, unused temporary files, or misconfigured persistent volumes.
 Debug: Check disk usage with df -h, clear unnecessary files, and review log rotation policies.
