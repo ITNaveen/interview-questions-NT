@@ -348,6 +348,8 @@ terraform-infrastructure/
 **Answer:**
 I would use Terragrunt and modules to handle environment-specific differences. Instead of just using variables, I would create separate module configurations for each environment. With Terragrunt, I can dynamically load different modules or configurations based on the environment. This avoids code duplication while keeping infrastructure consistent.
 
+I use Terragrunt to simplify Terraform management across multiple environments. It helps me keep my Terraform code DRY, manage remote state easily, and apply dependencies in the right order. Instead of duplicating configurations for dev, staging, and prod, I define everything once and use terragrunt.hcl to configure each environment dynamically. This saves time and avoids human errors.
+
 terragrunt-infra/
 │── modules/                    # Reusable Terraform modules
 │   ├── vpc/                    # VPC module
@@ -1031,6 +1033,8 @@ EC2 and S3 in separate locations: Define both modules in main.tf, specifying aws
 ## Terraform State Operations  ------
 
 ### 24. How would you modify a resource that has drifted from the Terraform configuration?
+
+- if someone manually creates a resource, Terraform won’t track it. I detect this by running terraform plan. To bring it under Terraform’s control, I use terraform import, then check its configuration using terraform show. Finally, I manually define it in main.tf, verify with terraform plan, and apply the changes to fully manage it in Terraform.
 
 📌 How to Fix a Resource That Drifted from Terraform
 Scenario:
