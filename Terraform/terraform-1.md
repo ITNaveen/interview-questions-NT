@@ -133,7 +133,7 @@ AWS Secrets Manager integration --
   create password with aws secret manager
   then find with "aws_secretsmanager_secret"
   then pull "aws_secretsmanager_secret_version"
-  now use it anywhere you want using data resource add _string at the end.
+  now use it anywhere you want using data resource add secret_string at the end.
    
 **Best Practices:**
 - Never commit secrets to version control
@@ -239,7 +239,7 @@ terraform {
 2. **Check for backups**:
    - If using a remote backend with versioning (like S3), restore a previous version
    - Check for local backups (e.g., `terraform.tfstate.backup`)
-- from aws console in s3 check version then make that versio current.
+- from aws console in s3 check version then make that version current.
 - terraform state list (this will show me what resources it has)
 - terraform plan
 - terraform apply
