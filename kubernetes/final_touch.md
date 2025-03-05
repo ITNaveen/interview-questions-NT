@@ -83,3 +83,5 @@ CSI (Container Storage Interface) driver acts as the middle link between your po
 
 🔹 Real-World EKS Example
 🔥 "In my EKS cluster, I use the AWS EBS CSI driver for my PostgreSQL database. When my database pod requests a 50GB storage volume, Kubernetes automatically provisions an EBS volume and mounts it to my pod. If my pod moves to another node, the volume is detached and reattached without data loss."
+
+port - 5432

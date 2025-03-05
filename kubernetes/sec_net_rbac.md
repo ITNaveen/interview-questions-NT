@@ -4,6 +4,8 @@
 
 ### Question 1: Explain the concept of Pod Security Context and how it enhances container security in Kubernetes.
 
+In my Kubernetes setup, I use Admission Controllers to enforce policies before pods are deployed. For example, I ensure all pods have security labels and block containers that run as root. Once a pod is deployed, I use Security Context to enforce restrictions like running as a non-root user, setting filesystem permissions, and controlling privilege escalation. This way, security is applied at both the API and runtime levels.
+
 **Answer:**
 Pod Security Context defines privilege and access control settings for Pods and containers. It allows you to set fine-grained security configurations that are applied to all containers within a Pod.
 The Pod Security Context defines security settings at the pod level, determining how all containers within the pod should behave in terms of privileges, user permissions, and filesystem access.
