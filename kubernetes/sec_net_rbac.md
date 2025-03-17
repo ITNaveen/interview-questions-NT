@@ -510,7 +510,15 @@ pods can interact with deployments, but pods cannot communicate with each other 
 6. Regularly audit RBAC policies with:
    ```
    kubectl auth can-i --list --namespace=app-team1 --as=system:serviceaccount:app-team1:app-service-account
-   ```
+
+# RBAC vs Admission controller - 
+Key Differences
+Feature	                      RBAC (Role & RoleBinding)	                                      Admission Controller
+Controls	                    User & Group Access (Who can do what)	                          Kubernetes Object Behavior (What is allowed)
+Scope	                        Namespace-based (Unless using ClusterRoles)	                    Cluster-wide
+Examples	                    Allowing only devs to create Pods in dev namespace	            Blocking containers running as root
+Enforcement Time	            Checked when a request is made	                                Checked before object is persisted
+
 
 ## Backup and Recovery Questions
 
@@ -601,6 +609,8 @@ Passing AWS credentials into the container.
 This is part of the CSI (Container Storage Interface) configuration, which manages Persistent Volume (PV) snapshots in Kubernetes.
 
 CSI is a standard interface for interacting with storage backends. Kubernetes uses it to manage storage volumes (like PVs).
+Yes, the CSI (Container Storage Interface) driver is how Kubernetes interacts with EBS (Elastic Block Store) in AWS.
+
 The volumeSnapshotClassName specifies the snapshot class used to define the behavior of the snapshot.
 csi-hostpath-snapclass is a custom class that tells Kubernetes which CSI driver to use for snapshots (in this case, it's using a hostpath driver for storage).
 

@@ -69,7 +69,7 @@ Do You Need to Define Instance Types in Karpenter?
 Karpenter will dynamically choose the best instance type based on pod resource requirements (CPU, memory, GPU, etc.).
 
 📌 Example Provisioner YAML (Fully Dynamic):
-........
+```yml
 apiVersion: karpenter.k8s.aws/v1alpha5
 kind: Provisioner
 metadata:
@@ -81,14 +81,14 @@ spec:
     securityGroupSelector:
       karpenter.sh/discovery: "my-cluster"
   ttlSecondsAfterEmpty: 30  # Auto-terminates empty nodes
-.........
-✅ Result: Karpenter picks the best instance type dynamically based on demand.
+```
+✅ Result: this provisioner has no limitations on CPU, memory, instance types, zones, or capacity type.
 
 👉 Yes, if you want control.
 You can specify which instance types Karpenter is allowed to use.
 📌 Example Provisioner YAML (Restricted to Certain Instances):
-.......
-apiVersion: karpenter.k8s.aws/v1alpha5
+```yml
+apiVersion: karpenter.k8s.aws/v1beta1
 kind: Provisioner
 metadata:
   name: controlled
@@ -96,15 +96,44 @@ spec:
   requirements:
     - key: "node.kubernetes.io/instance-type"
       operator: In
-      values: ["t3.medium", "c5.large", "m5.large"]  # Allowed types
+      values: ["t3.medium", "c5.large", "m5.large"]  # Allowed instance types
+
+    - key: "topology.kubernetes.io/zone"
+      operator: In
+      values: ["us-east-1a", "us-east-1b", "us-east-1c"]  # Adding more availability zones for better distribution
+
+    - key: "karpenter.k8s.aws/capacity-type"
+      operator: In
+      values: ["spot", "on-demand"]  # Supports both spot and on-demand
+
+  limits:
+    resources:
+      cpu: "50"  # Limits total CPU usage to 50 cores
+      memory: "250Gi"  # Limits total memory usage to 250Gi
+
   provider:
     subnetSelector:
       karpenter.sh/discovery: "my-cluster"
     securityGroupSelector:
       karpenter.sh/discovery: "my-cluster"
-  ttlSecondsAfterEmpty: 30
-.......
-✅ Result: Karpenter will only create t3.medium, c5.large, or m5.large nodes—nothing else.
+
+  ttlSecondsAfterEmpty: 60  # Increase time before termination to 60 seconds
+```
+# explanation - 
+apiVersion: Defines the API version (karpenter.k8s.aws/v1beta1) being used for this resource.
+kind: Specifies the resource type as Provisioner, which allows Karpenter to manage node provisioning dynamically.
+metadata: Contains metadata like the provisioner name (controlled) for identification.
+requirements: Defines constraints on which node types and properties can be used.
+node.kubernetes.io/instance-type: Restricts provisioning to t3.medium, c5.large, and m5.large instance types.
+topology.kubernetes.io/zone: Ensures nodes are provisioned only in us-east-1a, us-east-1b, and us-east-1c availability zones.
+karpenter.k8s.aws/capacity-type: Restricts nodes to either spot or on-demand instances.
+limits: Specifies maximum resource limits to prevent over-provisioning.
+cpu: Caps the total CPU usage across provisioned nodes at 50 cores.
+memory: Limits total memory allocation to 250Gi.
+provider: Configures networking-related settings like subnets and security groups.
+subnetSelector: Uses the karpenter.sh/discovery: my-cluster tag to automatically select subnets.
+securityGroupSelector: Uses the same discovery tag to select security groups.
+ttlSecondsAfterEmpty: Terminates an empty node automatically after 60 seconds of inactivity to optimize costs.
 
 How to Set Up Karpenter in AWS? (Step-by-Step)
 

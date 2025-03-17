@@ -13,15 +13,16 @@ The key parameters for rolling updates in a Deployment are:
 
 - `maxSurge`: Maximum number of pods that can be created over the desired number of pods.
   Step-by-Step Process:
+  
   Step 1 (Surge Phase):
-
   Kubernetes creates 2 new pods (because maxSurge=2), so now total = 10 pods (8 old + 2 new).
+  
   Step 2 (Terminate Old Pods):
-
   Kubernetes terminates 2 old pods (because maxUnavailable=2), so now total = 8 pods (6 old + 2 new).
+  
   Step 3 (Repeat Until Update is Done):
-
   Again, 2 new pods are created → total goes back to 10.
+  
   Then, 2 more old pods are terminated → total goes back to 8.
   This cycle continues until all old pods are replaced.
 
@@ -240,26 +241,68 @@ metrics:
         type: AverageValue
         averageValue: 500Mi
 
-C. Request-Based Scaling (RPS - Web/API Workloads)
-Uses HTTP requests per second (req/sec) to scale APIs & web services.
-Requires Prometheus, Datadog, or Custom Metrics Adapter.
-Example: Scaling based on 100 req/sec per pod.
-metrics:
-  - type: Object
-    object:
-      metric:
-        name: http_requests_per_second
-      describedObject:
-        apiVersion: networking.k8s.io/v1
-        kind: Ingress
-        name: api-ingress
-      target:
-        type: AverageValue
-        averageValue: "100"
+C. KEDA (Kubernetes Event-Driven Autoscaler) provides native HTTP request-based autoscaling (RPS) without requiring Prometheus. It is more efficient than traditional HPA because it can scale down to zero when there is no traffic, making it cost-effective.
 
-# Example:
-You set requests: 200m CPU, limits: 500m CPU.
-If a pod’s CPU crosses 400m CPU, HPA may add more pods.
+📌 KEDA monitors pending HTTP requests per pod (not RPS).
+If pending requests > threshold (targetPendingRequests), KEDA scales up pods in the target deployment.
+If pending requests drop to zero, KEDA scales pods down to zero (saving resources).
+Uses the KEDA HTTP Scaler, which works with Nginx, Traefik, or KEDA’s built-in proxy.
+
+✅ Example: Scaling API Pods Based on Pending HTTP Requests
+This example will auto-scale API pods when the number of pending requests per pod exceeds 10 (not RPS).
+
+1️⃣ Install KEDA - 
+kubectl apply -f https://github.com/kedacore/keda/releases/latest/download/keda.yaml
+
+2️⃣ Deploy the KEDA HTTP Scaler (i need to write this).
+KEDA has a built-in HTTP Scaler that can directly handle request-based scaling.
+```yml
+apiVersion: keda.sh/v1alpha1
+kind: HTTPScaledObject
+metadata:
+  name: api-http-scaler
+spec:
+  scaleTargetRef:
+    deployment: my-api-deployment  # Target API Deployment
+    service: my-api-service  # API Service that handles requests
+    port: 80
+  minReplicaCount: 1  # Minimum number of pods (can scale to 0)
+  maxReplicaCount: 10  # Maximum number of pods
+  targetPendingRequests: 10  # Scale when pending requests > 10 per pod
+
+🛠 How Does targetPendingRequests Work?
+Each pod has a queue of pending requests.
+If a single pod has 10 or more pending requests, KEDA will scale up.
+Pending requests = Requests that have arrived but are not yet processed by the pod.
+This ensures latency stays low by adding more pods when request processing slows down.
+```
+📌 Key Fields in the YAML.
+```yml
+Field	                              Description
+scaleTargetRef.deployment	          Name of the Deployment that should scale.
+scaleTargetRef.service	            The Service receiving HTTP traffic.
+scaleTargetRef.port	                The port on which the service is exposed.
+minReplicaCount	                    Minimum number of pods (can be 0 to save costs).
+maxReplicaCount	                    Maximum number of pods.
+targetPendingRequests	              Defines when scaling should happen (if pending requests > 100 per pod).
+```
+3️⃣ Apply the KEDA HTTP Scaler.
+kubectl apply -f http-scaled-object.yaml
+
+4️⃣ Verify Scaling Behavior.
+Check KEDA’s scaling objects:
+kubectl get httpscaledobject.
+kubectl describe httpscaledobject api-http-scaler.
+
+Check pod scaling dynamically:
+kubectl get pods -w
+
+🎯 Key Interview Takeaways - 
+KEDA’s HTTP Scaler is better than HPA for request-based scaling.
+No need for Prometheus! KEDA handles HTTP scaling natively.
+Scales pods based on live traffic (RPS) instead of CPU/memory.
+Can scale down to zero when no traffic (cost-effective).
+Works with Nginx, Traefik, or KEDA’s built-in HTTP proxy.
 
 # Yes! You create an HPA and link it to a specific Deployment (or StatefulSet)! 🎯
 
@@ -330,7 +373,6 @@ It allows incoming traffic only from:
 - NetworkPolicies require a CNI (Container Network Interface) plugin that supports them, such as Calico, Cilium, or Weave Net.
 
 ## 6. What are Kubernetes Admission Controllers and how would you use them to enforce security policies?
-
 Kubernetes Admission Controllers are special plugins that check API requests before they are saved in the cluster. They work after authentication and authorization but before the request is stored in the system. These controllers can approve, modify, or reject requests based on security rules and best practices.
 
 What Is a Request & Where Does It Come From?
@@ -366,6 +408,13 @@ Validating Admission Controllers – These controllers check API requests and re
 What Is OPA (Open Policy Agent)?
 
 OPA (Open Policy Agent) is an open-source policy engine that helps enforce fine-grained policies across cloud-native environments, including Kubernetes. It allows organizations to define security and compliance rules using a flexible Rego language and integrates with Kubernetes Admission Controllers to evaluate requests against predefined policies.
+
+# OPA (Open Policy Agent) is NOT an admission controller itself, but it is commonly used with admission controllers to enforce custom policies in Kubernetes.
+🔸 How OPA Works with Admission Controllers?
+Kubernetes has admission controllers (Validating & Mutating Webhooks).
+OPA acts as a validating webhook and enforces policies using Rego, its policy language.
+When a request (e.g., pod creation) is sent to Kubernetes, the admission controller calls OPA.
+OPA evaluates the request against defined policies and allows or denies it.
 
 🔹 Why Use OPA?
 Ensures consistent security enforcement across clusters.
@@ -441,6 +490,7 @@ Best Practices for Managing Kubernetes Secrets
 
 1. Use AWS Secrets Manager for Secure Storage
 AWS Secrets Manager securely stores and manages sensitive data with automatic rotation. It integrates with Kubernetes using the External Secrets Operator.
+
 How AWS Secrets Manager Works
 Store a secret in AWS Secrets Manager.
 Use the External Secrets Operator to fetch secrets dynamically and create Kubernetes Secrets.
@@ -477,23 +527,7 @@ spec:
 2️⃣ ESO creates a Kubernetes Secret (database-credentials) from the AWS secret.
 3️⃣ Kubernetes Pods can then use this secret as environment variables or mounted volumes.
 
-2. Mount Secrets into Kubernetes Pods
-Once the External Secret is created, mount it into a pod using environment variables.
-Mounting as Environment Variables
-
-apiVersion: v1
-kind: Pod
-metadata:
-  name: app-pod
-spec:
-  containers:
-  - name: app-container
-    image: my-app-image
-    envFrom:
-    - secretRef:
-        name: database-credentials # Reference to the Kubernetes secret
-
-3. Use RBAC to Limit Access to Secrets
+2. Use RBAC to Limit Access to Secrets
 Restrict access to secrets using Role-Based Access Control (RBAC).
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role # Defines an RBAC role
@@ -603,21 +637,37 @@ The Data Plane forms automatically as the proxies route service-to-service commu
 Why Use AWS App Mesh?
 
 AWS App Mesh is a managed service mesh that makes it easy to control service-to-service communication in Kubernetes and other environments. It provides:
+App Mesh, as a service mesh, operates at the network traffic level. It doesn't deploy or replace your actual application instances - it controls how traffic flows between instances that are already deployed.
 
 1. Advanced Traffic Management
-
 Canary Deployments → Gradually roll out new versions of services by sending a small percentage of traffic to the new version while keeping most requests going to the stable version.
 A/B Testing → Route specific types of traffic (e.g., users from a particular region) to different service versions.
 Circuit Breaking → Automatically stop sending requests to unhealthy services to prevent cascading failures.
 Fault Injection → Simulate failures (latency, dropped requests) to test system resilience.
 
-2. Security
+2. Security in AWS App Mesh (Simplified)
+1️⃣ Mutual TLS (mTLS) – Secure Service-to-Service Communication
+👉 What is mTLS?
+It encrypts traffic between services using TLS certificates.
+Both the sender and receiver verify each other’s identity before exchanging data.
+👉 Why is this important?
+✅ Prevents unauthorized services from sending or receiving data.
+✅ Ensures that communication is fully encrypted (protects against eavesdropping).
+✅ Strengthens security in zero-trust environments.
 
-Mutual TLS (mTLS) → Encrypts and authenticates all service-to-service traffic using TLS certificates. Both the sender and receiver verify each other’s identity.
-Fine-grained Access Control → Define policies that allow only authorized services to communicate with each other.
+2️⃣ Fine-Grained Access Control – Restrict Service Communication
+👉 How does it work?
+You define policies that allow or deny communication between services.
+These rules specify which services can talk to each other and which cannot.
+👉 Example Use Case:
+Service A (payment service) can communicate with Service B (order service).
+Service C (logging service) cannot communicate with Service A.
+👉 Why is this important?
+✅ Prevents unauthorized access → Only approved services can interact.
+✅ Reduces attack surface → Limits exposure if a service is compromised.
+✅ Ensures compliance → Enforces strict network security policies.
 
 3. Observability
-
 AWS X-Ray for Tracing → Helps visualize service interactions, analyze request latency, and identify bottlenecks.
 AWS CloudWatch for Logs & Metrics → Monitor traffic, detect anomalies, and troubleshoot issues.
 
@@ -640,6 +690,10 @@ Start with 90% traffic to nginx-v1 (old) and 10% to nginx-v2 (new).
 5️⃣ Monitor logs & performance of nginx-v2.
 6️⃣ Gradually increase traffic to nginx-v2 by updating the VirtualRouter.
 7️⃣ Once nginx-v2 is stable, retire nginx-v1 by deleting the old Deployment and VirtualNode.
+
+# Rolling Update = Slow, controlled deployment of pods, but traffic is not controlled.
+🔹 App Mesh (or any service mesh) = Controls how much traffic goes to old vs. new pods.
+🔹 Together = Safe, gradual deployment + controlled traffic flow = No downtime & no risk.
 
 Example - Implementing Canary Deployment with AWS App Mesh
 apiVersion: appmesh.k8s.aws/v1beta2
@@ -679,7 +733,7 @@ spec:
 apiVersion: appmesh.k8s.aws/v1beta2
 kind: VirtualNode
 metadata:
-  name: reviews-v1  # Virtual node for version 1
+  name: reviews-v1  # Virtual node for version 1 , to be added on old deployment.
 spec:
   awsName: reviews-v1.appmesh.local  # AWS App Mesh name
   listeners:
@@ -693,7 +747,7 @@ spec:
 apiVersion: appmesh.k8s.aws/v1beta2
 kind: VirtualNode
 metadata:
-  name: reviews-v2  # Virtual node for version 2
+  name: reviews-v2  # Virtual node for version 2, to be added on new deployment as label.
 spec:
   awsName: reviews-v2.appmesh.local  # AWS App Mesh name
   listeners:
