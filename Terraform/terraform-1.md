@@ -8,7 +8,11 @@ Why Only DynamoDB for Terraform State Locking?
 
 3️⃣ Fully Managed & Highly Available – No need to manage servers, patch software, or handle failover—DynamoDB is AWS-managed and replicated across AZs.
 
-4️⃣ Automatic Lock Expiry (TTL Feature) – Prevents stale locks if a Terraform process crashes because it has TTL, unlike RDS or file-based locks that require manual cleanup.
+4️⃣ Automatic Lock Expiry (TTL Feature) – Prevents stale locks if Terraform process crashes, the DynamoDB lock will automatically expire after its TTL (Time-to-Live) period, unlike RDS or file-based locks that require manual cleanup.
+If Terraform stops unexpectedly (crashes, disconnects, etc.), DynamoDB will wait 600 seconds (TTL) from the last recorded operation. After that, the lock expires automatically, and Terraform becomes available for other users.
+
+🔹 If Terraform is running normally, TTL does nothing.
+🔹 If Terraform crashes, TTL ensures the lock doesn't stay forever.
 
 5️⃣ Cost-Effective & IAM-Based Security – Cheaper than RDS, scales automatically, and uses IAM policies for fine-grained access control, making it more secure and efficient
 
