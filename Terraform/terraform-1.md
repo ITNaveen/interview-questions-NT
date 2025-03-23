@@ -113,7 +113,10 @@ resource "aws_db_instance" "my_db" {
 }
 
 export TF_VAR_db_password="EnvPassword123"  (Terraform picks up TF_VAR_db_password and assigns it to var.db_password automatically)
-terraform apply 
+terraform apply - 
+export TF_VAR_db_password="thispass"  # Set the password
+terraform plan   # Uses the exported variable
+terraform apply  # Uses the exported variable
 
 ..............................
 AWS Secrets Manager integration --
