@@ -8,6 +8,7 @@ toset - to convert list to set.
 variable "user_data" {
   default = file("/root/terraform-projects/user_data.sh")
 }
+
 resource "aws_instance" "development" {
     ami           = "ami-0edab43b6fa892279"
     instance_type = "t2.micro"
