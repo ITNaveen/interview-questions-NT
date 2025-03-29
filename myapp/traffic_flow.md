@@ -7,34 +7,6 @@ The browser needs to resolve the domain name (healthcareapp.com) to an IP addres
 
 # 🔷 Step 2: Route 53 Resolves DNS & Performs Health Checks
 .........................................
-How Does DNS Resolution Work?
-1️⃣ The browser checks its cache or the system’s DNS resolver (set by the OS or network).
-
-2️⃣ If not cached, it sends a query to the root DNS servers, which then direct it to the .com TLD (Top-Level Domain) servers.
-- The browser first checks its own cache - if healthcareapp.com was visited recently, the browser already knows the IP and connects directly (skipping DNS lookup).
-If not found, it moves to the next step.
-- When a browser cannot find a cached DNS record, it asks a Recursive DNS Resolver (set by netwrok - like Google DNS or Cloudflare). If the resolver does not have the IP cached either, it begins the DNS resolution process.
-- Next Step:
-✅ The Recursive DNS Resolver sends a query to a Root DNS Server. there are 13 sets of Root DNS Servers, but each set consists of multiple physical servers distributed worldwide for redundancy and performance.
-✅ The Root DNS Server is the top-most level in the DNS hierarchy.
-- How Root DNS Directs Requests to TLDs:
-If the domain is example.com, the Root DNS says:
-"Ask the .com TLD Name Server."
-If the domain is university.edu, it says:
-"Ask the .edu TLD Name Server."
-If the domain is techstartup.io, it says:
-"Ask the .io TLD Name Server."
-If the domain is mywebsite.net, it says:
-"Ask the .net TLD Name Server."
-
-3️⃣ The TLD servers check where the DNS is hosted (AWS Route 53, GoDaddy, Cloudflare, etc.) and return the Route 53 name server details.
-What the TLD Name Server Does
-✅ It checks its records and finds out which Authoritative DNS Name Server is responsible for healthcareapp.com.
-✅ Since healthcareapp.com is hosted on AWS Route 53, the .com TLD replies:
-📢 "I don’t have the IP, but ask AWS Route 53 at ns-123.awsdns.com."
-✅ The Recursive DNS Resolver now knows where to go next → AWS Route 53.
-
-4️⃣ The browser queries Route 53’s authoritative name servers, which provide the IP address of the Application Load Balancer (ALB).
 
 # shorter flow - 
 📌 Step-by-Step DNS Resolution Flow
