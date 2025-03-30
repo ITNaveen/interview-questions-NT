@@ -116,6 +116,26 @@ You should see pods for:
    - Provides PromQL query interface
    - **Industry Practice**: Central metrics repository
 
+Node Exporter and Kube-State-Metrics expose metrics endpoints that Prometheus scrapes based on configurations defined in ServiceMonitors and PodMonitors.
+
+# alerting for promethes - 
+
+Update your prometheus-values.yaml file to include:
+
+Slack configuration for AlertManager
+Your alert rules (CPU, memory, pod health, etc.)
+
+Run the Helm upgrade command:
+bashCopyhelm upgrade prometheus prometheus-community/kube-prometheus-stack -f prometheus-values.yaml -n monitoring
+
+That's it! After the upgrade completes:
+Your alerting rules will be active in Prometheus
+AlertManager will be configured to send notifications to Slack
+When alert conditions are met, you'll receive messages in your Slack channel
+
+# for loki - 
+
+
 ### Log Collection Workflow
 
 1. **Promtail** (DaemonSet):
@@ -145,6 +165,22 @@ You should see pods for:
    - Provides dashboards for visualization
    - Allows for combined views of metrics and logs
    - **Industry Practice**: De-facto standard for observability visualization
+
+Promtail: An agent that collects logs from various sources and forwards them to Loki for storage and analysis. ​
+infracloud.io
+
+Loki: A log aggregation system that stores logs efficiently, integrating seamlessly with Grafana for visualization.​
+
+Node Exporter: A Prometheus exporter that collects hardware and OS metrics from nodes, such as CPU usage, memory usage, disk I/O, and network statistics. ​
+DevOps.dev
+
+Kube-State-Metrics: An add-on service that listens to the Kubernetes API server and generates metrics about the state of Kubernetes objects, including pods, deployments, and services.​
+
+ServiceMonitor: A custom resource definition (CRD) in Kubernetes that defines how Prometheus should discover and scrape metrics from services.​
+
+Prometheus: A monitoring and alerting toolkit that collects and stores metrics data, scraping configured targets like Node Exporter, Kube-State-Metrics, and services defined in ServiceMonitors.​
+
+Grafana: A visualization tool that queries Prometheus for metrics and Loki for logs, providing unified dashboards and insights.
 
 ## What You Can See in Grafana
 
