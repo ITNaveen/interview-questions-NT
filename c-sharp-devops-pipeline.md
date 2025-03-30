@@ -33,7 +33,7 @@ In Trunk-Based Development (TBD), you:
 ## 3. Jenkins Pipeline Configuration
 
 ### 3.1 Jenkinsfile for C# Application
-```groovy
+```yml
 pipeline {
     agent any
     
@@ -107,11 +107,16 @@ How It Works in Jenkins
     You check the results in the SonarQube UI.
 
 SonarQube checks for:
-✔ Code quality issues (bad practices, duplicate code, complex methods, etc.)
-✔ Security vulnerabilities (e.g., SQL injection, hardcoded credentials)
-✔ Maintainability issues (e.g., too many nested loops, long methods)
-✔ Code coverage (how much of your code is tested by unit tests)
-Code smells are not bugs, but they make the code harder to maintain and can lead to real problems in the future.
+1. Bugs:
+SonarQube looks for logical errors or issues in the code that could cause problems during runtime, like null pointer exceptions (SonarQube scans the code without executing it. It doesn't need to run the program to identify potential issues. It looks for code patterns that could lead to errors, like accessing an object that could be null.) or incorrect calculations.
+2. Security Vulnerabilities:
+It checks for security flaws, such as risks for SQL injection, cross-site scripting (XSS), or storing sensitive data like passwords in the code.
+3. Code Smells:
+SonarQube identifies "bad smells" in the code — things that aren’t necessarily errors but could make the code hard to understand or maintain in the future, like long methods or duplicated code.
+4. Code Duplication:
+It flags sections of the code that are duplicated, encouraging developers to refactor and reduce repetition, making the code more efficient and easier to maintain.
+5. Test Coverage:
+SonarQube checks if the code is properly tested by unit tests. It reports the percentage of the code covered by tests to ensure that important parts are well-tested and bugs are less likely.
 
 
 Key Difference Between Unit Tests & SonarQube
