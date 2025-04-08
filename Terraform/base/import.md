@@ -1,14 +1,16 @@
 This way i can import current infra to terraform.
 There may be resource created manually using console or ansible, so we want these resources to be controlled by terraform.
 
-# Do terraform plan first.
+# process - 
 
 1. terraform import aws_instance.webserver-2 i-0907080ub67v7t6897 
    terraform import <resource_type>.<resource.name> <attribute>
+   for s3 bucket name is important but when i import i need this way - terraform import aws_s3_bucket.my_bucket my-bucket-name.
+   "my_bucket" is my given name only, its just an internal reference within your Terraform configuration, and it’s how Terraform keeps track of the resource in its state.
    1. This tells Terraform: "Start tracking this AWS instance in the state file."
    2. But it does NOT create or modify main.tf.
 
-2. terraform show | grep webserver-2 -A 50
+2. terraform show | grep webserver-2 -A 50 or terraform show | grep my-bucket-name (for s3).
    1. This shows all attributes of the imported resource from the Terraform state.
    2. Example: If webserver-2 references a security group, it may appear as part of its attributes.
 

@@ -303,177 +303,41 @@ This will prompt you to enter AWS Access Key, Secret Key, and Region for each pr
 ## Modules and Structure
 
 ### 11. What are the best practices for organizing large Terraform projects?
+When working with large Terraform projects, I break it down into three core concepts:
+🔹 1. Multi-Repo Strategy
+    What it means:
+    Break the infrastructure into multiple Git repositories based on team, function, or environment.
 
-**Answer:**
-For large-scale Terraform projects:
+    Why it's useful:
+    Each team can work independently without stepping on each other’s toes. Smaller repos = easier code reviews, CI/CD, and version control.
+    
+    Example:
+    terraform-networking/ – All VPCs, subnets, gateways
+    terraform-security/ – IAM roles, policies
+    terraform-app-infra/ – EC2, RDS, S3 for app stack
 
-1. **Repository Structure**:
-   - Use a monorepo or multiple repos based on team structure
-   - Consider using Terragrunt for repo organization
+🔹 2. Modules for Reuse
 
-2. **Module Organization**:
-   - Create reusable modules for common patterns
-   - Separate modules by resource type or functional area
-   - Maintain separate modules for each major cloud provider
+    What it means:
+    Write once, use everywhere. Create reusable Terraform modules for common patterns.
 
-3. **Environment Segregation**:
-   - Use separate state files for each environment
-   - Structure as `environments/[env]/[component]`
+    Why it's useful:
+    No need to repeat code in every project. Also helps enforce standards across environments.
 
-4. **Component Separation**:
-   - Split large infrastructures into logical components
-   - Example: networking, data storage, compute, security, etc.
+    Example:
+    A vpc module can be reused for dev, staging, and prod just by passing different CIDR blocks.
+    ec2_instance module can be used by many teams with different AMIs or tags.
 
-**Example Directory Structure:**
-```
-terraform-infrastructure/
-├── modules/                    # Reusable modules
-│   ├── networking/
-│   ├── database/
-│   └── kubernetes/
-├── environments/               # Environment-specific configurations
-│   ├── dev/
-│   │   ├── vpc/
-│   │   ├── databases/
-│   │   └── services/
-│   ├── staging/
-│   │   ├── vpc/
-│   │   ├── databases/
-│   │   └── services/
-│   └── prod/
-│       ├── vpc/
-│       ├── databases/
-│       └── services/
-└── global/                     # Global/shared resources
-    ├── iam/
-    ├── dns/
-    └── monitoring/
-```
+🔹 3. Terragrunt for DRY & Environment Management
+    What it means:
+    Terragrunt is a thin wrapper over Terraform that helps manage environments, state, and repeated code more cleanly.
 
-### 13. How would you deal with a module that needs to be different between environments, beyond simple variable changes?
+    Why it's useful:
+    You don’t want to copy-paste the same backend config or provider settings for every environment.
 
-**Answer:**
-I would use Terragrunt and modules to handle environment-specific differences. Instead of just using variables, I would create separate module configurations for each environment. With Terragrunt, I can dynamically load different modules or configurations based on the environment. This avoids code duplication while keeping infrastructure consistent.
-
-I use Terragrunt to simplify Terraform management across multiple environments. It helps me keep my Terraform code DRY, manage remote state easily, and apply dependencies in the right order. Instead of duplicating configurations for dev, staging, and prod, I define everything once and use terragrunt.hcl to configure each environment dynamically. This saves time and avoids human errors.
-
-terragrunt-infra/
-│── modules/                    # Reusable Terraform modules
-│   ├── vpc/                    # VPC module
-│   │   ├── main.tf
-│   │   ├── variables.tf
-│   │   ├── outputs.tf
-│   ├── ec2/                    # EC2 module
-│   │   ├── main.tf
-│   │   ├── variables.tf
-│   │   ├── outputs.tf
-│
-│── terragrunt/                 # Terragrunt configurations
-│   ├── test/                   # Test environment
-│   │   ├── terragrunt.hcl
-│   ├── stage/                  # Stage environment
-│   │   ├── terragrunt.hcl
-│   ├── prod/                   # Prod environment
-│   │   ├── terragrunt.hcl
-│
-│── terragrunt.hcl              # Global config for all environments
-
-# root terragrunt.hcl -     //thats how i can call modules in terragrant 
-  terraform {
-  source = "${get_repo_root()}/modules//"
-}
-
-remote_state {
-  backend = "s3"
-  config = {
-    bucket         = "my-terraform-state"
-    key            = "${path_relative_to_include()}/terraform.tfstate"
-    region         = "us-east-1"
-    dynamodb_table = "terraform-lock"
-  }
-}
-
-2️⃣ terragrunt/test/terragrunt.hcl (Test Environment)
-include {
-  path = find_in_parent_folders()
-}
-
-terraform {
-  source = "../../modules/"
-}
-
-inputs = {
-  vpc_cidr_block = "10.0.1.0/24"
-  instance_type  = "t2.micro"
-}
-
-3️⃣ terragrunt/stage/terragrunt.hcl (Stage Environment)
-include {
-  path = find_in_parent_folders()
-}
-
-terraform {
-  source = "../../modules/"
-}
-
-inputs = {
-  vpc_cidr_block = "10.0.2.0/24"
-  instance_type  = "t3.medium"
-}
-
-4️⃣ terragrunt/prod/terragrunt.hcl (Prod Environment)
-include {
-  path = find_in_parent_folders()
-}
-
-terraform {
-  source = "../../modules/"
-}
-
-inputs = {
-  vpc_cidr_block = "10.0.0.0/16"
-  instance_type  = "t3.large"
-}
-
-5️⃣ modules/vpc/main.tf (Reusable VPC Module)
-resource "aws_vpc" "main" {
-  cidr_block = var.vpc_cidr_block
-  tags = {
-    Name = "VPC-${terraform.workspace}"
-  }
-}
-✅ modules/vpc/outputs.tf
-variable "vpc_cidr_block" {
-  description = "CIDR block for the VPC"
-  type        = string
-}
-output "vpc_id" {
-  value = aws_vpc.main.id
-}
-✅ modules/vpc/variables.tf
-variable "vpc_cidr_block" {
-  description = "CIDR block for the VPC"
-  type        = string
-}
-
-🚀 Deploying Each Environment
-Run these commands inside each environment:
-cd terragrunt/test
-terragrunt apply --auto-approve
-
-cd ../stage
-terragrunt apply --auto-approve
-
-cd ../prod
-terragrunt apply --auto-approve
-
-📌 Why Is This Setup Good?
-✅ No duplicate Terraform code (everything is modular).
-✅ Different environments, different configurations (VPC & EC2 settings).
-✅ State files are isolated (each env has its own S3 state file).
-✅ Easy deployment with terragrunt apply.
-
-🚀 Now your infrastructure is clean, scalable, and easy to manage! 🎉
+    Terragrunt lets you reuse modules but keep environment configs separate.
+    How it fits in:
+    If I have 3 environments (dev, stage, prod), instead of creating full copies of Terraform code for each, I create just one module and use Terragrunt to manage configs per environment.
 
 ### 15. How do you handle versioning of your Terraform modules?
 
@@ -971,72 +835,6 @@ resource "aws_ec2_transit_gateway_peering_attachment" "example" {
 --------------------
 ---------------------
 
-### 23. Explain how provider alias works in module instantiation.
-
-Terraform Multi-Region Deployment with Modules
-This document outlines the setup for deploying Terraform modules across multiple AWS regions. It covers how to configure providers, call modules, and specify different regions for resources such as EC2 and S3.
-
-Repository Structure
-Repo 1 (Modules Repository)
-Contains Terraform modules:
-EC2 (for launching EC2 instances)
-S3 (for creating S3 buckets)
-
-Repo 2 (Infrastructure Repository)
-Defines Terraform providers.
-
-Calls modules from Repo 1.
-Provider Configuration (Repo 2)
-
-In Repo 2, define providers in providers.tf:
-provider "aws" {
-  region = "us-east-1"
-}
-
-provider "aws" {
-  alias  = "west"
-  region = "us-west-1"
-}
-
-To deploy EC2 in the default region, define the module in main.tf without specifying a provider:
-module "ec2" {
-  source = "path_to_repo1/modules/ec2"
-}
-
-Deploying EC2 in us-west-1
-To deploy EC2 in us-west-1, explicitly pass the provider alias:
-module "ec2_west" {
-  source    = "path_to_repo1/modules/ec2"
-  providers = {
-    aws = aws.west
-  }
-}
-
-To deploy an S3 bucket in us-west-1, pass the provider alias:
-module "s3" {
-  source    = "path_to_repo1/modules/s3"
-  providers = {
-    aws = aws.west
-  }
-}
-
-If you need to deploy EC2 in the default region and S3 in us-west-1 within the same configuration file:
-module "ec2" {
-  source = "path_to_repo1/modules/ec2"
-}
-module "s3" {
-  source    = "path_to_repo1/modules/s3"
-  providers = {
-    aws = aws.west
-  }
-}
-
-- Summary
-EC2 in us-east-1: No provider override needed.
-EC2 in us-west-1: Specify provider alias (aws.west).
-S3 in us-west-1: Specify provider alias (aws.west).
-EC2 and S3 in separate locations: Define both modules in main.tf, specifying aws.west only for S3.
-
 ## Terraform State Operations  ------
 
 ### 24. How would you modify a resource that has drifted from the Terraform configuration?
@@ -1180,35 +978,6 @@ The `terraform state` command provides subcommands for advanced state management
 4. **rm** - Removes items from state (without destroying resources):
    ```bash
    terraform state rm aws_instance.example
-   ```
-
-**Common Use Cases:**
-
-1. **Refactoring Terraform Code**:
-   ```bash
-   # Restructuring resources into modules
-   terraform state mv aws_vpc.main module.networking.aws_vpc.main
-   terraform state mv aws_subnet.public[*] module.networking.aws_subnet.public[*]
-   ```
-
-2. **Handling Resource Deletion Without Recreation**:
-   ```bash
-   # Remove resource from state but keep it in infrastructure
-   terraform state rm aws_iam_policy.too_permissive
-   
-   # Create new resource with desired configuration
-   # Edit terraform code to add new resource
-   terraform apply
-   ```
-
-3. **Recovering from State Corruption**:
-   ```bash
-   # Export current state
-   terraform state pull > terraform.tfstate.backup
-   
-   # Edit the backup file to fix issues
-   # Push fixed state
-   terraform state push terraform.tfstate.backup
    ```
 
 

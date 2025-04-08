@@ -89,30 +89,15 @@ resource "local_file" "pet" {
 }
 
 .......................................
-# Ignore change - 
-we can also intruct terraform not to touch some specifics in the resource with ignore change arguement.
+# replace_triggered_by
+It allows you to force a resource to be recreated when another resource changes, even if they aren't directly linked by variables or attributes.
 
-resouces "aws_instance" "webserver" {
-    ami= 697977023hihoo707
-    instance_type= t2.micro
-    tags= {
-        Name = "ProjectA-Webserver"
-    }
-    lifecycle {
-        ignore_changes = [
-            tags               # This way i have stopped terraform to change tag name.
-        ]
-    }
+lifecycle {
+  replace_triggered_by = [aws_ami.new]  # EC2 recreates if the AMI changes
 }
 
-......................
-    lifecycle {
-        ignore_changes = [
-            tags, ami              # This way i have stopped terraform to change tag, ami.
-        ]
-    }
+Use Case:
+    When you want decoupled resources to be recreated based on external dependencies or changes to other resources.
+    Example: An EC2 instance needs to be recreated whenever a new AMI is built, even if the AMI ID isn't passed explicitly to the EC2 instance config.
 
-    lifecycle {
-        ignore_changes = all       # no chnages for this resource                        
-    }
 ........................
