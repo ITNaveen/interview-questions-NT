@@ -89,7 +89,7 @@ You should see pods for:
 
 ## Data Flow Architecture
 
-### Metrics Collection Workflow
+### Metrics Collection Workflow (Prometheus) - 
 
 1. **Node Exporter** (DaemonSet):
    - Runs on every Kubernetes node
@@ -133,9 +133,128 @@ Your alerting rules will be active in Prometheus
 AlertManager will be configured to send notifications to Slack
 When alert conditions are met, you'll receive messages in your Slack channel
 
+# Setting alert - 
+1. kubectl get pods -n <namespace> to check prom.. and alertmanager is installed.
+2. Prometheus Chart Values: If you used the Prometheus Helm chart, ensure that AlertManager is enabled in the values.yaml file, it should be available.
+3. then create prom-value.yaml = helm get values prometheus -n monitoring --all > prometheus-values.yaml.
+4. then add slack part in prometheus-values.yaml - 
+```yml
+alertmanager:                        # Top-level configuration for AlertManager
+  config:                            # The actual configuration for AlertManager
+    global:                          # Global settings for alert handling
+      resolve_timeout: 5m           # How long to wait before marking an alert as resolved
+
+    route:                           # The routing tree of how alerts are handled
+      receiver: 'slack-notifications'  # Default receiver name (defined below)
+      group_by: ['alertname', 'severity']  # Alerts with same labels are grouped together
+      group_wait: 30s               # Wait 30s before sending initial notifications
+      group_interval: 5m            # Minimum time between alerts for the same group
+      repeat_interval: 1h           # How often to resend ongoing alerts
+
+    receivers:                       # List of receivers to notify
+      - name: 'slack-notifications'   # Must match the receiver name above
+        slack_configs:              # Slack-specific configuration
+          - channel: '#alerts-channel'   # Slack channel to send alerts to
+            send_resolved: true     # Send a message when the alert is resolved
+            api_url: 'https://hooks.slack.com/services/XXXXX/YYYYY/ZZZZZ'  
+            # Slack webhook URL – use the one you generate from your Slack workspace
+```
+5. upgrade helm chart = helm upgrade prometheus prometheus-community/kube-prometheus-stack -n monitoring -f prometheus-values.yaml.
+6. define prometheus-alerts.yaml = 
+```yml
+apiVersion: monitoring.coreos.com/v1               # PrometheusRule API version
+kind: PrometheusRule                               # Custom resource for Prometheus alert rules
+metadata:
+  name: infra-alerts                               # Name of the PrometheusRule object
+  namespace: monitoring                            # Namespace where Prometheus is installed
+  labels:
+    release: prometheus                            # Match this to your Helm release name (important!)
+
+spec:
+  groups:
+    - name: infra.rules                            # Name of the alert group
+      rules:
+
+        # ✅ 1. High CPU Usage Alert
+        - alert: HighCPUUsage
+          expr: avg(rate(container_cpu_usage_seconds_total{container!=""}[5m])) by (pod) > 0.8
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High CPU usage detected"
+            description: "Pod {{ $labels.pod }} is using more than 80% CPU for over 2 minutes."
+
+        # ✅ 2. High Memory Usage Alert
+        - alert: HighMemoryUsage
+          expr: avg(container_memory_usage_bytes{container!=""}) by (pod) > 500000000
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High Memory usage detected"
+            description: "Pod {{ $labels.pod }} is using more than ~500MB RAM for over 2 minutes."
+# The High Memory Usage alert is still valuable even when memory limits are set because it gives us an early warning that a pod is approaching its limit before Kubernetes kills and restarts it. Constant restarts can cause performance degradation, downtime, or service interruptions. The alert helps us investigate potential memory leaks, adjust resource requests/limits, or scale pods to avoid frequent pod restarts, ensuring smoother and more stable service operation.
+
+        # ✅ 4. Node Unreachable
+        - alert: NodeUnreachable
+          expr: up{job="kubelet"} == 0
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Node unreachable"
+            description: "Kubelet is not running or node is down on {{ $labels.instance }}."
+
+        # ✅ 5. Low Disk Space (root filesystem)
+        - alert: LowDiskSpace
+          expr: (node_filesystem_avail_bytes{mountpoint="/",fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{mountpoint="/",fstype!~"tmpfs|overlay"}) < 0.15
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Low disk space"
+            description: "Node {{ $labels.instance }} has less than 15% disk space left on root."
+
+        # ✅ 6. Kubernetes API Server Errors
+        - alert: KubeAPIErrorRate
+          expr: rate(apiserver_request_total{code=~"5.."}[5m]) > 1
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "High API error rate"
+            description: "Kubernetes API server is returning 5xx errors >1 req/sec."
+# What It Does:
+This alert is designed to monitor the error rate of requests to the Kubernetes API server (the heart of the Kubernetes control plane). It specifically looks at 5xx HTTP errors (which indicate server-side problems) and checks if the rate of those errors exceeds a given threshold.
+
+HTTP 5xx errors indicate server-side issues such as:
+Internal Server Errors (500)
+Service Unavailable (503), etc.
+
+If the error rate is too high, it could mean something is seriously wrong with the Kubernetes API, possibly impacting control plane operations, pod scheduling, or cluster health.
+```
+7. Make sure the release: label matches your Helm release name (often prometheus).
+8. kubectl apply -f prometheus-alerts.yaml.
+
+# high memory alert is still needed because - 
+```yml
+resources:
+  requests:
+    memory: "500Mi"
+  limits:
+    memory: "1Gi"
+```
+Memory Request: Kubernetes will reserve 500 MiB of memory for this pod.
+Memory Limit: The pod cannot use more than 1 GiB of memory.
+If the pod starts using 1.2 GiB of memory (i.e., exceeds the memory limit):
+Kubernetes kills the pod.
+The pod is marked as OOMKilled and will restart automatically.
+The pod will continue to restart until either:
+The pod’s memory usage stays below the limit (e.g., it gets optimized).
+The memory limit is adjusted (increased).
+
 # for loki - 
-
-
 ### Log Collection Workflow
 
 1. **Promtail** (DaemonSet):
@@ -207,100 +326,6 @@ Grafana: A visualization tool that queries Prometheus for metrics and Loki for l
    - Drill down from metrics anomalies to logs
    - **Industry Practice**: Create context-linked dashboards
 
-## Alerting Configuration
-
-### Setting Up Prometheus Alerts
-
-1. **PrometheusRule Custom Resource**:
-
-```yaml
-apiVersion: monitoring.coreos.com/v1
-kind: PrometheusRule
-metadata:
-  name: app-alerts
-  namespace: monitoring
-  labels:
-    release: prometheus  # Important: match your Helm release label
-spec:
-  groups:
-  - name: kubernetes
-    rules:
-    - alert: HighCPUUsage
-      expr: sum(rate(container_cpu_usage_seconds_total{container!="POD",container!=""}[5m])) by (pod) > 0.8
-      for: 5m
-      labels:
-        severity: warning
-      annotations:
-        summary: "High CPU usage detected"
-        description: "Pod {{ $labels.pod }} has high CPU usage ({{ $value }})"
-```
-
-2. **Apply the rules**:
-
-```bash
-kubectl apply -f prometheus-rules.yaml
-```
-
-3. **Industry Practice**: Group alerts by service or component, use consistent severity labels
-
-### Setting Up Loki Alerts (via Grafana)
-
-1. **Create Loki alert in Grafana UI**:
-   - Navigate to Alerting > Alert Rules
-   - Create a new alert rule using LogQL:
-     - Example: `sum(rate({app="my-app"} |= "error" [5m])) > 10`
-   - Set evaluation interval and alerting thresholds
-   - Configure notification channels
-
-2. **Industry Practice**: 
-   - Use Loki for pattern-based log alerts
-   - Use Prometheus for metric-based alerts
-
-### Configuring Alertmanager
-
-1. **Create a values file for AlertManager configuration**:
-
-```yaml
-# alertmanager-values.yaml
-alertmanager:
-  config:
-    global:
-      resolve_timeout: 5m
-    route:
-      group_by: ['job', 'alertname', 'severity']
-      group_wait: 30s
-      group_interval: 5m
-      repeat_interval: 12h
-      receiver: 'slack'
-      routes:
-      - match:
-          severity: critical
-        receiver: 'pagerduty'
-    receivers:
-    - name: 'slack'
-      slack_configs:
-      - api_url: 'https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXX'
-        channel: '#alerts'
-        send_resolved: true
-    - name: 'pagerduty'
-      pagerduty_configs:
-      - service_key: 'your_pagerduty_service_key'
-```
-
-2. **Update Prometheus stack with AlertManager config**:
-
-```bash
-helm upgrade prometheus prometheus-community/kube-prometheus-stack \
-  --namespace monitoring \
-  -f alertmanager-values.yaml
-```
-
-3. **Industry Practice**:
-   - Route different severity alerts to different channels
-   - Critical alerts to PagerDuty/OpsGenie for immediate action
-   - Warning alerts to Slack/Teams for awareness
-   - Group related alerts to reduce notification noise
-
 ## Common Interview Questions and Industry Practices
 
 1. **"How do you monitor Kubernetes clusters?"**
@@ -316,7 +341,17 @@ helm upgrade prometheus prometheus-community/kube-prometheus-stack \
    - "We start with the pre-built dashboards from kube-prometheus-stack and then create custom dashboards for specific applications. We follow a hierarchical approach - cluster overview, namespace overview, and then specific application dashboards, allowing us to drill down from high-level to detailed views."
 
 5. **"How do you handle persistent storage for monitoring components?"**
-   - "We configure persistent storage for Prometheus and Loki through their Helm values, using the appropriate storage class for our environment. This ensures we retain historical metrics and logs even if pods restart."
+- "Since we're fully AWS-based, our persistent storage strategy for monitoring components like Prometheus and Loki is optimized for the cloud environment:
+EBS-backed storage: We configure Prometheus and Loki to use AWS EBS volumes through the gp3 storage class. 
+In our Helm values, we set up PersistentVolumeClaims with this storage class and appropriate size—typically 100-200GB for Prometheus and similar for Loki in production environments.
+Storage configuration: In our Helm charts, we enable persistence with configurations like:
+yamlpersistence:
+  enabled: true
+  storageClass: gp3
+  size: 150Gi
+  accessMode: ReadWriteOnce
 
-6. **"How do you scale your monitoring stack?"**
-   - "For larger clusters, we increase resource limits for Prometheus and Loki, implement retention policies to manage storage, and in some cases shard Prometheus by namespace or application to distribute the load."
+Data lifecycle: We implement retention policies within Prometheus and Loki (e.g., 15 days for raw metrics, 30+ days for aggregated data) to manage storage growth.
+Snapshot backups: We leverage AWS EBS snapshots on a scheduled basis using a tool like Velero to protect our monitoring data.
+This approach ensures we maintain historical monitoring data even through pod or node failures, which is essential for incident investigation and performance analysis
+
