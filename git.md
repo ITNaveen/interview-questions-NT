@@ -36,7 +36,35 @@ $ git pull origin main
 
 ### `git reset`
 - Moves the branch pointer to a previous commit, discarding changes.
+- git reset is a powerful command used to move the branch pointer to a specific commit, effectively removing later commits from the current branch history.
 - Can be used to remove commits from history (soft, mixed, or hard reset).
+
+# SOFT - 
+```yml
+git reset --soft <commit-hash>
+- Moves the HEAD pointer to the specified commit.
+- Keeps all changes from reset commits in the staging area (index).
+- Useful when you want to recommit changes with a different commit message or structure.
+Soft reset: When you want to combine several commits into one
+uncommit and 
+
+
+# MIXED -
+git reset <commit-hash>
+# or
+git reset --mixed <commit-hash>
+- Moves the HEAD pointer to the specified commit.
+- Unstages changes from the reset commits, keeping them in your working directory.
+- Good for reorganizing changes before committing again.
+Mixed reset: When you want to rewrite history and reorganize changes
+
+# HARD - 
+git reset --hard <commit-hash>
+Moves the HEAD pointer to the specified commit
+Removes all changes from both staging area and working directory
+Dangerous: Discards all changes completely after the target commit
+Hard reset: When you want to completely discard recent commits
+
 
 **Real-Life Example:**
 You committed sensitive API keys by mistake. You want to completely remove the commit from history before pushing to the remote repository.
@@ -109,6 +137,88 @@ You are working on a long-running feature (`feature-reporting`). Meanwhile, `mai
 $ git checkout feature-reporting
 $ git rebase main
 ```
+
+# example - 
+main = 1,2,3,4,5 then i created feature from this 5th and in feature i have a,b,c,d,e.
+--------- now with MERGE - 
+commit 6 (merge commit)
+Author: You
+Date: Today
+    Merge branch 'feature' into main
+
+commit e
+Author: You
+Date: Yesterday
+    Fix review comments
+
+commit d
+Author: You
+Date: 2 days ago
+    Add tests
+
+commit c
+Author: You
+Date: 3 days ago
+    Implement feature logic
+
+commit b
+Author: You
+Date: 4 days ago
+    Add styling
+
+commit a
+Author: You
+Date: 5 days ago
+    Create new component
+
+commit 5
+Author: You
+Date: Last week
+    Update documentation
+
+commit 4
+Author: You
+Date: Last week
+    Add error handling
+
+
+---------- WITH REBASE - 
+commit e'
+Author: You
+Date: Today
+    Fix review comments
+
+commit d'
+Author: You
+Date: Today
+    Add tests
+
+commit c'
+Author: You
+Date: Today
+    Implement feature logic
+
+commit b'
+Author: You
+Date: Today
+    Add styling
+
+commit a'
+Author: You
+Date: Today
+    Create new component
+
+commit 5
+Author: You
+Date: Last week
+    Update documentation
+
+commit 4
+Author: You
+Date: Last week
+    Add error handling
+
+... and so on
 
 ---
 
