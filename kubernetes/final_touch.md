@@ -7,7 +7,7 @@
 
 ✅ If ALB1 (Active) is healthy, Route 53 sends traffic to Cluster 1 (Active).
 ❌ If ALB1 is unhealthy, Route 53 redirects traffic to ALB2 (Passive).
-3️⃣ ALB1 (Active Cluster) → Runs with 8 manually defined worker nodes (EKS Managed Node Group) for stability.
+3️⃣ ALB1 (Active Cluster) → Runs with 12 manually defined worker nodes (EKS Managed Node Group) for stability.
 4️⃣ ALB2 (Passive Cluster) → Initially has no running nodes but is set up with Karpenter to dynamically scale when needed.
 5️⃣ If traffic switches to ALB2 (Passive Cluster), Karpenter automatically provisions worker nodes to handle workloads.
 6️⃣ Once Cluster 1 (Active) recovers, Route 53 redirects traffic back to ALB1, and Karpenter scales Cluster 2 back down to reduce cost."

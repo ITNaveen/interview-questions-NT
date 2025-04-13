@@ -209,3 +209,66 @@ Add to Ingress:
 ---
 
 Need a CI/CD pipeline example or diagram added? Just say the word! 🚀
+
+
+# FLOW - 
+```yml
+
+Your Answer (Refined):
+Client Request:
+
+The client types your application's URL in the browser, which sends a request to Route 53.
+
+Route 53 Health Check:
+
+Route 53 performs a health check and sees that Cluster A is healthy. Since Cluster A is healthy, it routes the request to Cluster A’s endpoint.
+
+It's important to clarify here: Route 53 is responsible for directing the traffic to the right endpoint (which could be Cluster A or Cluster B, depending on health). At this point, the request is on its way to the ALB in Cluster A.
+
+API Gateway Intercepts the Request:
+
+The request first hits the API Gateway before reaching the ALB.
+
+The API Gateway is in place to handle several important tasks:
+
+Authentication: It checks if the incoming request contains a valid JWT token. If not, it redirects the user to Keycloak for authentication.
+
+Authorization: After the user is authenticated, API Gateway checks the user's permissions to ensure they can access the requested resources.
+
+Keycloak Authentication:
+
+If this is the first request or the request doesn't have a valid JWT token, the API Gateway redirects the user to Keycloak for authentication.
+
+Keycloak validates the user's credentials and issues a JWT token upon successful authentication.
+
+API Gateway Stores the JWT Token:
+
+The API Gateway now stores the JWT token issued by Keycloak.
+
+This token is essentially a "session token" for this user/request. For any subsequent requests from the same client, the API Gateway will check if the request includes a valid token.
+
+Forwarding Request with JWT Token:
+
+Once authenticated, the API Gateway forwards the request along to Cluster A's ALB with the JWT token included in the request headers. This allows the ALB to route the request to the Ingress Controller for further processing.
+
+Request to the Ingress Controller:
+
+The request then passes from the ALB to the Ingress Controller within Cluster A.
+
+The Ingress Controller forwards the request to the appropriate backend service running inside the Kubernetes cluster.
+
+Subsequent Requests:
+
+For any subsequent requests from the same client, the API Gateway will already have the JWT token stored. It will automatically attach this token to the request and forward it to the ALB.
+
+The ALB and Ingress Controller will continue processing the requests based on the token, ensuring the user is authenticated for each interaction.
+
+Key Points to Emphasize:
+API Gateway is the security and traffic management layer that sits in front of your ALB and handles all the authentication and authorization tasks.
+
+Keycloak handles user authentication and provides JWT tokens that are then passed by the API Gateway to ensure that each subsequent request is properly authenticated.
+
+The JWT token is not just for the first request, but is carried along with every request from that client, so the API Gateway doesn't need to re-authenticate the user every time.
+
+The API Gateway maintains the user's session through the JWT token and ensures that only authenticated requests are forwarded to the appropriate backend services.
+```
